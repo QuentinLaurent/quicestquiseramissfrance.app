@@ -1,5 +1,6 @@
 import './App.css'
 import logo from './assets/logo.svg'
+import logoLight from './assets/logo-light.svg'
 import {useState} from "react";
 import {Bars3Icon} from "@heroicons/react/20/solid";
 import {Dialog, DialogPanel} from "@headlessui/react";
@@ -111,7 +112,7 @@ function App() {
                     <div className="flex justify-center">
                         <img
                             alt=""
-                            src={logo}
+                            src={logoLight}
                             className="h-40 w-auto"
                         />
                     </div>
