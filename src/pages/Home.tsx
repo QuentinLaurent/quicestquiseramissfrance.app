@@ -4,20 +4,36 @@ const baseUrl = "https://quicestquiseramissfrance.fr";
 const Home = ({client}: {client: any}) => {
 
     const [miss, setMiss] = useState<any>([]);
+    const [rawMiss, setRawMiss] = useState<any>([]);
+    const [search, setSearch] = useState("");
 
     useEffect(() => {
         client.collection("miss").getList(1, 50, {}).then((response: {items: any[]} ) => {
-
-            setMiss(response.items.map((item) => {
+            const misses = response.items.map((item) => {
                 const fileName = item.photo; // Le champ qui contient le fichier
                 if (fileName) {
                     const fileUrl = `${baseUrl}/api/files/miss/${item.id}/${fileName}`;
                     item.photoUrl = fileUrl;
                 }
                 return item;
-            }));
+            })
+            setSearch("")
+            setMiss(misses);
+            setRawMiss(misses)
         })
     }, []);
+
+    useEffect(() => {
+        if(search === "") setMiss(rawMiss)
+        else{
+            setMiss(rawMiss.filter((m: any) => {
+                return m.name.toLowerCase().includes(search.toLowerCase())
+                    || m.work.toLowerCase().includes(search.toLowerCase())
+                    || m.region.toLowerCase().includes(search.toLowerCase())
+                    || m.age.toString().toLowerCase().includes(search.toLowerCase())
+            }))
+        }
+    }, [search]);
 
 
     return (
@@ -48,6 +64,19 @@ const Home = ({client}: {client: any}) => {
                         ))}
                     </div>
                 </div>
+            </div>
+            <div className="fixed z-20 left-1/2 bottom-0 -translate-x-1/2 bg-gray-100 shadow-xl rounded-t px-2 py-1 flex items-center">
+                <input type="text" placeholder="filtrer par mot clé" className="bg-transparent outline-0"
+                    onInput={(e) => setSearch(e.currentTarget.value)}
+                />
+                {search !== "" && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5}
+                     stroke="currentColor" className="size-6 cursor-pointer"
+                     onClick={() => setSearch("")}
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                          d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                </svg>}
+
             </div>
         </div>
     );
