@@ -61,7 +61,7 @@ function App() {
                         <a href="#" className="-m-1.5 p-1.5">
                             <img
                                 alt=""
-                                src={logo}
+                                src={logoLight}
                                 className="h-8 w-auto"
                             />
                         </a>
@@ -112,7 +112,7 @@ function App() {
                     <div className="flex justify-center">
                         <img
                             alt=""
-                            src={logoLight}
+                            src={logo}
                             className="h-40 w-auto"
                         />
                     </div>
