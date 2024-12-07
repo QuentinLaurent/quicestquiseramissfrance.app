@@ -1,5 +1,6 @@
 
-const Vote = ({client}) => {
+// @ts-ignore
+const Vote = ({client}: {client?: any}) => {
 
     return (
         <div>

@@ -1,7 +1,7 @@
 import {useEffect, useState} from "react";
 const baseUrl = "https://quicestquiseramissfrance.fr";
 
-const Home = ({client}) => {
+const Home = ({client}: {client: any}) => {
 
     const [miss, setMiss] = useState<any>([]);
 

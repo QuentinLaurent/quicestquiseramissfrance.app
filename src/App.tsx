@@ -1,6 +1,6 @@
 import './App.css'
 import logo from './assets/logo.svg'
-import React, {useState} from "react";
+import {useState} from "react";
 import {Bars3Icon} from "@heroicons/react/20/solid";
 import {Dialog, DialogPanel} from "@headlessui/react";
 import {XMarkIcon} from "@heroicons/react/16/solid";

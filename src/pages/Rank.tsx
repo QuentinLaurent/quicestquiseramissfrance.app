@@ -1,5 +1,5 @@
-
-const Rank = ({client}) => {
+// @ts-ignore
+const Rank = ({client}: {client?: any}) => {
 
     return (
         <div>
