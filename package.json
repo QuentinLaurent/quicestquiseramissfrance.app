@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build-dist": "tsc -b && vite build && rm -rf ../pb_public &&  mv dist/ ../pb_public",
     "lint": "eslint .",
     "preview": "vite preview"
   },
