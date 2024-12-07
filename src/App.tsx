@@ -3,7 +3,7 @@ import './App.css'
 function App() {
   return (
     <>
-      COucou
+      Qui sera la miss France 2025?
     </>
   )
 }
