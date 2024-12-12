@@ -55,7 +55,6 @@ function App() {
 
 
         client.collection("miss").getFullList().then((response:  any[] ) => {
-            console.log("getFullList",response)
             const misses =  response.map((item) => {
                 const fileName = item.photo; // Le champ qui contient le fichier
                 if (fileName) {
@@ -73,10 +72,6 @@ function App() {
         getVotes().then()
     }, [who]);
 
-
-    useEffect(() => {
-        console.log("misses",misses)
-    }, [misses]);
 
 
     const getVotes = async () => {
