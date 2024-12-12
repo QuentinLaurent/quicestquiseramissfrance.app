@@ -13,6 +13,7 @@ const Home = ({misses, show}: {misses: any[], show : boolean}) => {
     }, [misses]);
 
     useEffect(() => {
+        console.log("use effect miss",miss)
     }, [miss]);
 
     useEffect(() => {
