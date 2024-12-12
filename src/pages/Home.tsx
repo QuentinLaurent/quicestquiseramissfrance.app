@@ -7,19 +7,11 @@ const Home = ({misses, show}: {misses: any[], show : boolean}) => {
     const [search, setSearch] = useState("");
 
     useEffect(() => {
-        console.log("HOME misses",miss)
         setRawMiss(misses)
         setMiss(misses)
         setSearch("")
     }, [misses]);
 
-    useEffect(() => {
-        console.log("use effect rawMiss",rawMiss)
-    }, [rawMiss]);
-
-    useEffect(() => {
-        console.log("use effect miss",miss)
-    }, [miss]);
 
     useEffect(() => {
         if(!search || search === "") setMiss(rawMiss)
