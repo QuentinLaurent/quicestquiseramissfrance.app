@@ -1,7 +1,7 @@
 import './App.css'
 import logo from './assets/logo.svg'
 import logoLight from './assets/logo-light.svg'
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Bars3Icon} from "@heroicons/react/20/solid";
 import {Dialog, DialogPanel} from "@headlessui/react";
 import {XMarkIcon} from "@heroicons/react/16/solid";
@@ -9,6 +9,7 @@ import PocketBase from "pocketbase";
 import Home from "./pages/Home.tsx";
 import Vote from "./pages/Vote.tsx";
 import Rank from "./pages/Rank.tsx";
+import SelectWho from "./pages/SelectWho.tsx";
 
 
 
@@ -16,20 +17,92 @@ const baseUrl = "https://quicestquiseramissfrance.fr";
 
 function App() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-    const [page, setPage] = useState("home")
+    const [page, setPage] = useState("")
     const client = new PocketBase(baseUrl);
+    client.autoCancellation(false);
+    const [phase, setPhase] = useState(1);
+    const [misses, setMisses] = useState<any[]>([]);
+    const [who, setWho] = useState<any>();
+    const [votes, setVotes] = useState<any[]>([]);
+    const [votesScore, setVotesScore] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
+
+    useEffect(() => {
+        if(who) {
+            setPage("home")
+        }
+    }, [who]);
+
+    useEffect(() => {
+        client.collection('gestion').getFullList().then((response: any) => {
+            response.forEach((item: any) => {
+                if(item.key === "PHASE") setPhase(parseInt(item.value));
+            })
+        })
+        client.collection('votant').getFullList().then((response: any) => {
+            setUsers(response)
+        })
+        client.realtime.subscribe('gestion', (event: any) => {
+            if(event.action === "update" && event.record.key === "PHASE") setPhase(parseInt(event.record.value))
+        });
+
+        client.realtime.subscribe('vote', () => {
+            getVotes().then()
+            getVotesScore().then()
+        });
+
+        getVotesScore().then()
 
 
+        client.collection("miss").getFullList().then((response:  any[] ) => {
+            const misses =  response.map((item) => {
+                const fileName = item.photo; // Le champ qui contient le fichier
+                if (fileName) {
+                    const fileUrl = `${baseUrl}/api/files/miss/${item.id}/${fileName}`;
+                    item.photoUrl = fileUrl;
+                }
+                return item;
+            })
+            setMisses(misses);
+        })
+    }, []);
+
+
+    useEffect(() => {
+        getVotes().then()
+    }, [who]);
+
+
+    const getVotes = async () => {
+        if(!who) return;
+        client.collection('vote').getList(1, 100,{filter: `votant="${who.id}"`}).then((response: any) => {
+            setVotes(response.items)
+        })
+    }
+
+    const getVotesScore = async () => {
+        client.collection('vote').getFullList({expand: 'votant,miss'}).then(async (response: any) => {
+            const groupedByName = response.reduce((acc:any, vote:any) => {
+                const votantName = vote.expand?.votant?.nom || 'Unknown';
+                if (!acc[votantName]) {
+                    acc[votantName] = [];
+                }
+                acc[votantName].push(vote);
+                return acc;
+            }, {});
+            setVotesScore(groupedByName)
+        })
+    }
 
   return (
     <div className="bg-white">
         <header className="absolute inset-x-0 top-0 z-50">
             <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
-                <div className="flex lg:flex-1">
-
+                <div className="flex lg:flex-1 lg:flex-col">
+                    {who && <><span>Votant:&nbsp;</span><span className="font-bold">{who.nom}</span></>}
                 </div>
                 <div className="flex lg:hidden">
-                    <button
+                <button
                         type="button"
                         onClick={() => setMobileMenuOpen(true)}
                         className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-gray-700"
@@ -49,7 +122,7 @@ function App() {
                             Le classement
                         </a>
                 </div>
-                <div className="hidden lg:flex lg:flex-1 lg:justify-end">
+                <div className="hidden lg:flex lg:flex-col lg:flex-1 lg:items-end">
 
                 </div>
             </nav>
@@ -77,13 +150,13 @@ function App() {
                     <div className="mt-6 flow-root">
                         <div className="-my-6 divide-y divide-gray-500/10">
                             <div className="space-y-2 py-6">
-                                <a onClick={() => setPage("home")} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
+                                <a onClick={() => {setMobileMenuOpen(false);setPage("home")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
                                     Les Miss
                                 </a>
-                                <a onClick={() => setPage("my-vote")} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
+                                <a onClick={() => {setMobileMenuOpen(false);setPage("my-vote")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
                                     Mes votes
                                 </a>
-                                <a onClick={() => setPage("rank")} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
+                                <a onClick={() => {setMobileMenuOpen(false);setPage("rank")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
                                     Le classement
                                 </a>
                             </div>
@@ -119,9 +192,10 @@ function App() {
                 </div>
             </div>
 
-            {page === "home" && <Home client={client}></Home>}
-            {page === "my-vote" && <Vote client={client}></Vote>}
-            {page === "rank" && <Rank client={client}></Rank>}
+            <SelectWho show={page === ""} users={users} setWho={setWho}></SelectWho>
+            <Home show={page === "home"} misses={misses}></Home>
+            <Vote show={page === "my-vote"} client={client} phase={phase} misses={misses} who={who} votes={votes}></Vote>
+            <Rank show={page === "rank"}  phase={phase} votesScore={votesScore}></Rank>
 
 
         </div>
