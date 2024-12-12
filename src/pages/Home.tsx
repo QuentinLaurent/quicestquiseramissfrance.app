@@ -9,7 +9,7 @@ const Home = ({misses, show}: {misses: any[], show : boolean}) => {
     useEffect(() => {
         console.log("HOME misses",miss)
         setRawMiss(misses)
-        setMiss(rawMiss)
+        setMiss(misses)
         setSearch("")
     }, [misses]);
 
