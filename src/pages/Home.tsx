@@ -22,7 +22,7 @@ const Home = ({misses, show}: {misses: any[], show : boolean}) => {
     }, [miss]);
 
     useEffect(() => {
-        if(search === "") setMiss(rawMiss)
+        if(!search || search === "") setMiss(rawMiss)
         else{
             setMiss(rawMiss.filter((m: any) => {
                 return m.name.toLowerCase().includes(search.toLowerCase())
