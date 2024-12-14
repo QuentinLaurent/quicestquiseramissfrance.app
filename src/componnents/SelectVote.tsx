@@ -21,7 +21,7 @@ const SelectVote = ({misses, setVote, title = "Choix de miss",selectedMiss}: { m
                     className="grid w-full cursor-default grid-cols-1 rounded-md bg-white py-1.5 pl-3 pr-2 text-left text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6">
           <span className="col-start-1 row-start-1 flex items-center gap-3 pr-6">
             {selected && <img alt="" src={selected.photoUrl} className="size-5 shrink-0 rounded-full"/>}
-              {selected && <span className="block truncate">{selected.name}</span>}
+              {selected && <span className="block truncate">{selected.region}</span>}
               {!selected && <span className="block truncate">{title}</span>}
           </span>
                     <ChevronUpDownIcon
