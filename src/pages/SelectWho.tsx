@@ -1,6 +1,5 @@
-
-
-const SelectWho = ({users = [], setWho, show}: {users: any[], setWho:any, show: boolean}) => {
+import {Votant} from "../lib/game.ts";
+const SelectWho = ({users = [], setWho, show}: {users: Votant[], setWho: (user: Votant) => void, show: boolean}) => {
 
 
     return <div className={"flex flex-col items-center p-6 gap-4 " + (!show ? 'hidden' : '')}>

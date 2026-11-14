@@ -1,28 +1,29 @@
-import {useEffect, useState} from "react";
 import {Listbox, ListboxButton, ListboxOption, ListboxOptions} from '@headlessui/react'
 import {ChevronUpDownIcon} from '@heroicons/react/16/solid'
 import {CheckIcon} from '@heroicons/react/20/solid'
+import {Miss} from "../lib/game.ts";
 
-const SelectVote = ({misses, setVote, title = "Choix de miss",selectedMiss}: { misses: any[], setVote: any, title: string, selectedMiss: any | null }) => {
-    const [selected, setSelected] = useState<any>(null)
+interface Props {
+    misses: Miss[];
+    setVote: (miss: Miss) => void;
+    title: string;
+    selectedMiss: Miss | null;
+    // Miss déjà choisies dans les autres cases de la phase : non sélectionnables.
+    takenIds: string[];
+}
 
-    useEffect(() => {
-        if (selected) setVote(selected)
-    }, [selected]);
-    useEffect(() => {
-        setSelected(selectedMiss);
-    }, [selectedMiss]);
-
-
+const SelectVote = ({misses, setVote, title = "Choix de miss", selectedMiss, takenIds}: Props) => {
     return (
-        <Listbox value={selected} onChange={setSelected}  >
+        <Listbox value={selectedMiss} by="id" onChange={(miss: Miss | null) => {
+            if (miss && miss.id !== selectedMiss?.id) setVote(miss)
+        }}>
             <div className="relative mt-2 w-[220px]">
                 <ListboxButton
                     className="grid w-full cursor-default grid-cols-1 rounded-md bg-white py-1.5 pl-3 pr-2 text-left text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6">
           <span className="col-start-1 row-start-1 flex items-center gap-3 pr-6">
-            {selected && <img alt="" src={selected.photoUrl} className="size-5 shrink-0 rounded-full"/>}
-              {selected && <span className="block truncate">{selected.region}</span>}
-              {!selected && <span className="block truncate">{title}</span>}
+            {selectedMiss && <img alt="" src={selectedMiss.photoUrl} className="size-5 shrink-0 rounded-full"/>}
+              {selectedMiss && <span className="block truncate">{selectedMiss.region}</span>}
+              {!selectedMiss && <span className="block truncate">{title}</span>}
           </span>
                     <ChevronUpDownIcon
                         aria-hidden="true"
@@ -38,7 +39,8 @@ const SelectVote = ({misses, setVote, title = "Choix de miss",selectedMiss}: { m
                         <ListboxOption
                             key={miss.id}
                             value={miss}
-                            className="group relative cursor-default select-none py-2 pl-3 pr-9 text-gray-900 data-[focus]:bg-indigo-600 data-[focus]:text-white data-[focus]:outline-none"
+                            disabled={takenIds.includes(miss.id)}
+                            className="group relative cursor-default select-none py-2 pl-3 pr-9 text-gray-900 data-[focus]:bg-indigo-600 data-[focus]:text-white data-[focus]:outline-none data-[disabled]:opacity-40"
                         >
                             <div className="flex items-center">
                                 <img alt="" src={miss.photoUrl} className="size-5 shrink-0 rounded-full"/>

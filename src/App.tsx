@@ -1,7 +1,7 @@
 import './App.css'
 import logo from './assets/logo.svg'
 import logoLight from './assets/logo-light.svg'
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useMemo, useState} from "react";
 import {Bars3Icon} from "@heroicons/react/20/solid";
 import {Dialog, DialogPanel} from "@headlessui/react";
 import {XMarkIcon} from "@heroicons/react/16/solid";
@@ -10,89 +10,124 @@ import Home from "./pages/Home.tsx";
 import Vote from "./pages/Vote.tsx";
 import Rank from "./pages/Rank.tsx";
 import SelectWho from "./pages/SelectWho.tsx";
+import {editionOf, LEGACY_EDITION, Miss, Votant, VoteRecord} from "./lib/game.ts";
 
 
+const baseUrl = import.meta.env.VITE_PB_URL || "https://quicestquiseramissfrance.fr";
+const WHO_STORAGE_KEY = "qcqsmf.votant";
 
-const baseUrl = "https://quicestquiseramissfrance.fr";
+const client = new PocketBase(baseUrl);
+client.autoCancellation(false);
+
+const storedWhoId = () => {
+    try {
+        return localStorage.getItem(WHO_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+const storeWhoId = (id: string | null) => {
+    try {
+        if (id) localStorage.setItem(WHO_STORAGE_KEY, id);
+        else localStorage.removeItem(WHO_STORAGE_KEY);
+    } catch {
+        // stockage indisponible (navigation privée) : on redemandera au prochain chargement
+    }
+}
 
 function App() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [page, setPage] = useState("")
-    const client = new PocketBase(baseUrl);
-    client.autoCancellation(false);
     const [phase, setPhase] = useState(1);
-    const [misses, setMisses] = useState<any[]>([]);
-    const [who, setWho] = useState<any>();
-    const [votes, setVotes] = useState<any[]>([]);
-    const [votesScore, setVotesScore] = useState<any[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
+    // Édition en cours. Tant que la clé EDITION n'existe pas dans `gestion`, tout appartient à l'édition historique.
+    const [edition, setEdition] = useState(LEGACY_EDITION);
+    const [editionEnabled, setEditionEnabled] = useState(false);
+    const [allMisses, setAllMisses] = useState<Miss[]>([]);
+    const [who, setWhoState] = useState<Votant>();
+    const [allVotes, setAllVotes] = useState<VoteRecord[]>([]);
+    const [users, setUsers] = useState<Votant[]>([]);
 
-    useEffect(() => {
-        if(who) {
-            setPage("home")
-        }
-    }, [who]);
-
-    useEffect(() => {
-        client.collection('gestion').getFullList().then((response: any) => {
-            response.forEach((item: any) => {
-                if(item.key === "PHASE") setPhase(parseInt(item.value));
-            })
-        })
-        client.collection('votant').getFullList().then((response: any) => {
-            setUsers(response)
-        })
-        client.realtime.subscribe('gestion', (event: any) => {
-            if(event.action === "update" && event.record.key === "PHASE") setPhase(parseInt(event.record.value))
-        });
-
-        client.realtime.subscribe('vote', () => {
-            getVotes().then()
-            getVotesScore().then()
-        });
-
-        getVotesScore().then()
-
-
-        client.collection("miss").getFullList().then((response:  any[] ) => {
-            const misses =  response.map((item) => {
-                const fileName = item.photo; // Le champ qui contient le fichier
-                if (fileName) {
-                    const fileUrl = `${baseUrl}/api/files/miss/${item.id}/${fileName}`;
-                    item.photoUrl = fileUrl;
-                }
-                return item;
-            })
-            setMisses(misses);
-        })
-    }, []);
-
-
-    useEffect(() => {
-        getVotes().then()
-    }, [who]);
-
-
-
-    const getVotes = async () => {
-        if(!who) return;
-        client.collection('vote').getList(1, 100,{filter: `votant="${who.id}"`}).then((response: any) => {
-            setVotes(response.items)
-        })
+    const setWho = (user?: Votant) => {
+        storeWhoId(user ? user.id : null);
+        setWhoState(user);
+        setPage(user ? "home" : "");
     }
 
-    const getVotesScore = async () => {
-        client.collection('vote').getFullList({expand: 'votant,miss'}).then(async (response: any) => {
-            const groupedByName = response.reduce((acc:any, vote:any) => {
-                const votantName = vote.expand?.votant?.nom || 'Unknown';
-                if (!acc[votantName]) {
-                    acc[votantName] = [];
-                }
-                acc[votantName].push(vote);
-                return acc;
-            }, {});
-            setVotesScore(groupedByName)
-        })
+    const loadGestion = useCallback(async () => {
+        const items = await client.collection('gestion').getFullList<{ key: string, value: string }>();
+        const value = (key: string) => items.find((item) => item.key === key)?.value?.trim();
+        setPhase(parseInt(value("PHASE") || "") || 1);
+        setEdition(value("EDITION") || LEGACY_EDITION);
+        setEditionEnabled(!!value("EDITION"));
+    }, []);
+
+    const loadMisses = useCallback(async () => {
+        const items = await client.collection("miss").getFullList<Miss>();
+        setAllMisses(items.map((item) => ({
+            ...item,
+            photoUrl: item.photo ? `${baseUrl}/api/files/miss/${item.id}/${item.photo}` : undefined,
+        })));
+    }, []);
+
+    // Le paramètre `votant` permet au serveur de renvoyer aussi mes votes de la phase en cours
+    // (voir pocketbase/README.md) ; ceux des autres n'arrivent qu'à la clôture de la phase.
+    const loadVotes = useCallback(async (votantId?: string) => {
+        const items = await client.collection('vote').getFullList<VoteRecord>(votantId ? {query: {votant: votantId}} : {});
+        setAllVotes(items);
+    }, []);
+
+    useEffect(() => {
+        loadGestion().catch(console.error);
+        loadMisses().catch(console.error);
+        client.collection('votant').getFullList<Votant>({sort: 'nom'}).then((response) => {
+            setUsers(response);
+            const stored = response.find((u) => u.id === storedWhoId());
+            if (stored) {
+                setWhoState(stored);
+                setPage("home");
+            }
+        }).catch(console.error);
+
+        client.collection('gestion').subscribe('*', () => loadGestion().catch(console.error)).catch(console.error);
+        // Les résultats sont saisis sur les miss : le classement suit en direct.
+        client.collection('miss').subscribe('*', () => loadMisses().catch(console.error)).catch(console.error);
+        return () => {
+            client.collection('gestion').unsubscribe('*').catch(() => {});
+            client.collection('miss').unsubscribe('*').catch(() => {});
+        }
+    }, [loadGestion, loadMisses]);
+
+    // À chaque changement de joueur, de phase ou d'édition : les votes visibles changent.
+    useEffect(() => {
+        loadVotes(who?.id).catch(console.error);
+    }, [who, phase, edition, loadVotes]);
+
+    const misses = useMemo(() => allMisses.filter((m) => editionOf(m) === edition), [allMisses, edition]);
+    const votes = useMemo(
+        () => allVotes.filter((v) => v.votant === who?.id && editionOf(v) === edition),
+        [allVotes, who, edition],
+    );
+
+    const saveVote = async (step: number, number: number, miss: Miss) => {
+        if (!who) throw new Error("Aucun votant sélectionné");
+        if (step !== phase) throw new Error("Cette phase de vote est fermée");
+        const existing = votes.find((v) => parseInt(v.phase) === step && v.voteNumber === number);
+        try {
+            if (existing) {
+                await client.collection('vote').update(existing.id, {miss: miss.id});
+            } else {
+                await client.collection('vote').create({
+                    phase: step.toString(),
+                    votant: who.id,
+                    miss: miss.id,
+                    voteNumber: number,
+                    ...(editionEnabled ? {edition} : {}),
+                });
+            }
+        } finally {
+            await loadVotes(who.id).catch(console.error);
+        }
     }
 
   return (
@@ -100,7 +135,10 @@ function App() {
         <header className="absolute inset-x-0 top-0 z-50">
             <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
                 <div className="flex lg:flex-1 lg:flex-col">
-                    {who && <><span>Votant:&nbsp;</span><span className="font-bold">{who.nom}</span></>}
+                    {who && <span>
+                        <span>Votant:&nbsp;</span><span className="font-bold">{who.nom}</span>
+                        <button type="button" onClick={() => setWho(undefined)} className="ml-2 text-sm text-gray-500 underline">Changer</button>
+                    </span>}
                 </div>
                 <div className="flex lg:hidden">
                 <button
@@ -108,7 +146,7 @@ function App() {
                         onClick={() => setMobileMenuOpen(true)}
                         className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-gray-700"
                     >
-                        <span className="sr-only">Open main menu</span>
+                        <span className="sr-only">Ouvrir le menu</span>
                         <Bars3Icon aria-hidden="true" className="size-6"/>
                     </button>
                 </div>
@@ -195,8 +233,12 @@ function App() {
 
             <SelectWho show={page === ""} users={users} setWho={setWho}></SelectWho>
             <Home show={page === "home"} misses={misses}></Home>
-            <Vote show={page === "my-vote"} client={client} phase={phase} misses={misses} who={who} votes={votes}></Vote>
-            <Rank show={page === "rank"}  phase={phase} votesScore={votesScore}></Rank>
+            {who
+                ? <Vote show={page === "my-vote"} phase={phase} misses={misses} votes={votes} saveVote={saveVote}></Vote>
+                : page === "my-vote" && <p className="p-6 text-center">
+                    <button type="button" onClick={() => setPage("")} className="underline">Choisissez d'abord qui vous êtes</button>
+                </p>}
+            <Rank show={page === "rank"} phase={phase} edition={edition} users={users} who={who} misses={allMisses} allVotes={allVotes}></Rank>
 
 
         </div>

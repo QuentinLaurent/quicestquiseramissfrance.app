@@ -1,34 +1,19 @@
-import {useEffect, useState} from "react";
+import {useMemo, useState} from "react";
+import {Miss} from "../lib/game.ts";
 
-const Home = ({misses, show}: {misses: any[], show : boolean}) => {
-
-    const [miss, setMiss] = useState<any>([]);
-    const [rawMiss, setRawMiss] = useState<any>([]);
+const Home = ({misses, show}: { misses: Miss[], show: boolean }) => {
     const [search, setSearch] = useState("");
 
-    useEffect(() => {
-        setRawMiss(misses)
-        setMiss(misses)
-        setSearch("")
-    }, [misses]);
-
-
-    useEffect(() => {
-        if(!search || search === "") setMiss(rawMiss)
-        else{
-            setMiss(rawMiss.filter((m: any) => {
-                return m.name.toLowerCase().includes(search.toLowerCase())
-                    || m.work.toLowerCase().includes(search.toLowerCase())
-                    || m.region.toLowerCase().includes(search.toLowerCase())
-                    || m.field.toLowerCase().includes(search.toLowerCase())
-                    || m.age.toString().toLowerCase().includes(search.toLowerCase())
-            }))
-        }
-    }, [search]);
-
+    const miss = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        if (!term) return misses;
+        return misses.filter((m) =>
+            [m.name, m.work, m.region, m.field, m.age].some((value) => String(value ?? "").toLowerCase().includes(term))
+        );
+    }, [misses, search]);
 
     return (
-        <div className={ !show ? 'hidden' : ''}>
+        <div className={!show ? 'hidden' : ''}>
             <p className="text-center uppercase mt-4 text-pretty text-lg font-medium text-gray-900 sm:text-xl/8">
                 Liste des Miss
             </p>
@@ -37,7 +22,7 @@ const Home = ({misses, show}: {misses: any[], show : boolean}) => {
                 <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-12 lg:max-w-7xl lg:px-8">
 
                     <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:gap-x-8">
-                        {miss.map((m:any) => (
+                        {miss.map((m) => (
                             <a key={m.id} className=" relative mb-5">
                                 <h2 className="absolute shadow rounded text-center text-2xl -top-5 right-4 left-4  z-10 bg-[#9c272e] text-white py-1 px-3 uppercase">Miss {m.region}{m.field && <small><br />{m.field}</small>}</h2>
                                 <img
