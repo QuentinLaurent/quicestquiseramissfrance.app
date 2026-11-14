@@ -58,16 +58,13 @@ classement qu'une fois la phase suivante ouverte.
 - Édition suivante : changer `edition` dans `mf_game`, remettre `phase` à 1 et saisir
   les nouvelles candidates. L'ancien classement reste consultable dans l'app.
 
-## Déploiement (Plesk)
+## Déploiement
 
-Le site est un simple dossier de fichiers statiques.
+À chaque push sur `master`, la GitHub Action `.github/workflows/deploy.yml` compile
+le site et publie le résultat sur la branche `gh-pages` (elle peut aussi être lancée
+à la main depuis l'onglet Actions).
 
-```
-npm ci
-npm run build
-```
-
-Publier le contenu de `dist/` à la racine du site (`httpdocs`). Avec l'extension
-Git de Plesk, on peut aussi déployer le dépôt hors de `httpdocs`, lancer ces deux
-commandes en action de déploiement, puis pointer la racine du site sur `dist/`.
-Le site doit être servi en HTTPS.
+Pour servir cette branche avec GitHub Pages : Settings > Pages > Deploy from a
+branch > `gh-pages`, dossier `/ (root)`. Avec un nom de domaine personnalisé, ajouter
+un fichier `public/CNAME` contenant le domaine, sinon le réglage est effacé à chaque
+publication.
