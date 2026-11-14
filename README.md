@@ -64,7 +64,6 @@ classement qu'une fois la phase suivante ouverte.
 le site et publie le résultat sur la branche `gh-pages` (elle peut aussi être lancée
 à la main depuis l'onglet Actions).
 
-Pour servir cette branche avec GitHub Pages : Settings > Pages > Deploy from a
-branch > `gh-pages`, dossier `/ (root)`. Avec un nom de domaine personnalisé, ajouter
-un fichier `public/CNAME` contenant le domaine, sinon le réglage est effacé à chaque
-publication.
+Le site est servi par GitHub Pages depuis cette branche : Settings > Pages > Deploy
+from a branch > `gh-pages`, dossier `/ (root)`. Le domaine `quicestquiseramissfrance.fr`
+est déclaré dans `public/CNAME`, recopié à chaque publication.
