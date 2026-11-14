@@ -1,37 +1,46 @@
 import {useEffect, useMemo, useState} from "react";
-import {computeRanking, editionOf, FINISHED_PHASE, Miss, PHASES, Votant, VoteRecord} from "../lib/game.ts";
+import {Miss, PHASES, Player, RankingRow} from "../lib/game.ts";
+import {supabase} from "../lib/supabase.ts";
 
 interface Props {
     show: boolean;
     phase: number;
     edition: string;
-    users: Votant[];
-    who?: Votant;
+    editions: string[];
+    who?: Player;
+    // Les résultats sont saisis sur les miss : tout changement recalcule le classement.
     misses: Miss[];
-    allVotes: VoteRecord[];
 }
 
-const Rank = ({show, phase, edition, users, who, misses, allVotes}: Props) => {
+const Rank = ({show, phase, edition, editions, who, misses}: Props) => {
     const [selectedEdition, setSelectedEdition] = useState(edition);
+    const [rows, setRows] = useState<RankingRow[]>([]);
 
     useEffect(() => {
         setSelectedEdition(edition)
     }, [edition]);
 
-    const editions = useMemo(() => {
-        const all = new Set([edition, ...allVotes.map(editionOf)]);
-        return [...all].sort().reverse();
-    }, [edition, allVotes]);
+    useEffect(() => {
+        if (!selectedEdition) return;
+        let cancelled = false;
+        supabase.rpc('mf_ranking', {p_edition: selectedEdition}).then(({data, error}) => {
+            if (error) console.error(error);
+            else if (!cancelled) setRows(data);
+        });
+        return () => {
+            cancelled = true;
+        }
+    }, [selectedEdition, phase, misses]);
 
     const ranking = useMemo(() => {
-        const isCurrent = selectedEdition === edition;
-        const votes = allVotes.filter((v) => editionOf(v) === selectedEdition);
-        // Une édition passée n'affiche que les joueurs qui y ont participé.
-        const players = isCurrent ? users : users.filter((u) => votes.some((v) => v.votant === u.id));
-        return computeRanking(players, votes, misses, isCurrent ? phase : FINISHED_PHASE);
-    }, [selectedEdition, edition, allVotes, users, misses, phase]);
+        const sorted = [...rows].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "fr"));
+        const ranks: number[] = [];
+        sorted.forEach((row, i) => ranks.push(i > 0 && sorted[i - 1].total === row.total ? ranks[i - 1] : i + 1));
+        return sorted.map((row, i) => ({...row, rank: ranks[i]}));
+    }, [rows]);
 
     const closedPhases = PHASES.filter((p) => selectedEdition !== edition || p.number < phase);
+    const pointsOf = (row: RankingRow, number: number) => [row.p1, row.p2, row.p3, row.p4][number - 1];
 
     return (
         <div className={!show ? 'hidden' : ''}>
@@ -51,13 +60,13 @@ const Rank = ({show, phase, edition, users, who, misses, allVotes}: Props) => {
             </p>}
             <ol className="m-auto max-w-[500px] my-10">
                 {ranking.map((line) => (
-                    <li key={line.votant.id}
-                        className={"flex items-center gap-3 border-b border-b-gray-500 p-2 " + (line.votant.id === who?.id ? "bg-rose-50" : "")}>
+                    <li key={line.player_id}
+                        className={"flex items-center gap-3 border-b border-b-gray-500 p-2 " + (line.player_id === who?.id ? "bg-rose-50" : "")}>
                         <span className="w-8 text-right font-bold tabular-nums text-[#9c272e]">{line.rank}.</span>
                         <span className="flex-1">
-                            <span className="block font-bold">{line.votant.nom}</span>
+                            <span className="block font-bold">{line.name}</span>
                             {closedPhases.length > 0 && <span className="block text-xs text-gray-500">
-                                {closedPhases.map((p) => `Phase ${p.number} : ${line.byPhase[p.number] || 0}`).join(" · ")}
+                                {closedPhases.map((p) => `Phase ${p.number} : ${pointsOf(line, p.number)}`).join(" · ")}
                                 {line.tierce && " · tiercé dans l'ordre"}
                             </span>}
                         </span>

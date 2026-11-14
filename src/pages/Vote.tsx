@@ -23,15 +23,16 @@ const Vote = ({phase, misses, votes, saveVote, show}: Props) => {
             setStatus({ok: true, text: `Vote enregistré : Miss ${miss.region}`});
         } catch (error) {
             console.error('Erreur lors du traitement du vote:', error);
-            setStatus({ok: false, text: "Le vote n'a pas été enregistré. Vérifiez que la phase est encore ouverte et réessayez."});
+            const reason = error instanceof Error && error.message ? ` (${error.message})` : "";
+            setStatus({ok: false, text: `Le vote n'a pas été enregistré${reason}.`});
         } finally {
             saving.current = false;
         }
     }
 
     const selectedMissAtStep = (step: number, number: number): Miss | null => {
-        const vote = votes.find((v) => parseInt(v.phase) === step && v.voteNumber === number);
-        return (vote && misses.find((m) => m.id === vote.miss)) || null;
+        const vote = votes.find((v) => v.phase === step && v.slot === number);
+        return (vote && misses.find((m) => m.id === vote.miss_id)) || null;
     }
 
     const renderPhase = (config: PhaseConfig) => {

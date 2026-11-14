@@ -6,14 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build-dist": "tsc -b && vite build && rm -rf ../pb_public &&  mv dist/ ../pb_public",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@heroicons/react": "^2.2.0",
-    "pocketbase": "^0.22.1",
+    "@supabase/supabase-js": "^2.119.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

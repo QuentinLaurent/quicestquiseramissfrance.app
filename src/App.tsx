@@ -5,34 +5,36 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import {Bars3Icon} from "@heroicons/react/20/solid";
 import {Dialog, DialogPanel} from "@headlessui/react";
 import {XMarkIcon} from "@heroicons/react/16/solid";
-import PocketBase from "pocketbase";
 import Home from "./pages/Home.tsx";
 import Vote from "./pages/Vote.tsx";
 import Rank from "./pages/Rank.tsx";
 import SelectWho from "./pages/SelectWho.tsx";
-import {editionOf, LEGACY_EDITION, Miss, Votant, VoteRecord} from "./lib/game.ts";
+import {Miss, Player, VoteRecord} from "./lib/game.ts";
+import {photoUrl, supabase} from "./lib/supabase.ts";
 
 
-const baseUrl = import.meta.env.VITE_PB_URL || "https://quicestquiseramissfrance.fr";
-const WHO_STORAGE_KEY = "qcqsmf.votant";
+const SESSION_STORAGE_KEY = "qcqsmf.session";
 
-const client = new PocketBase(baseUrl);
-client.autoCancellation(false);
+interface Session {
+    playerId: string;
+    code: string;
+}
 
-const storedWhoId = () => {
+const storedSession = (): Session | null => {
     try {
-        return localStorage.getItem(WHO_STORAGE_KEY);
+        const session = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
+        return session?.playerId && session?.code ? session : null;
     } catch {
         return null;
     }
 }
 
-const storeWhoId = (id: string | null) => {
+const storeSession = (session: Session | null) => {
     try {
-        if (id) localStorage.setItem(WHO_STORAGE_KEY, id);
-        else localStorage.removeItem(WHO_STORAGE_KEY);
+        if (session) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+        else localStorage.removeItem(SESSION_STORAGE_KEY);
     } catch {
-        // stockage indisponible (navigation privée) : on redemandera au prochain chargement
+        // stockage indisponible (navigation privée) : on redemandera le code au prochain chargement
     }
 }
 
@@ -40,94 +42,119 @@ function App() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [page, setPage] = useState("")
     const [phase, setPhase] = useState(1);
-    // Édition en cours. Tant que la clé EDITION n'existe pas dans `gestion`, tout appartient à l'édition historique.
-    const [edition, setEdition] = useState(LEGACY_EDITION);
-    const [editionEnabled, setEditionEnabled] = useState(false);
+    const [edition, setEdition] = useState("");
     const [allMisses, setAllMisses] = useState<Miss[]>([]);
-    const [who, setWhoState] = useState<Votant>();
-    const [allVotes, setAllVotes] = useState<VoteRecord[]>([]);
-    const [users, setUsers] = useState<Votant[]>([]);
+    const [session, setSession] = useState<Session | null>(null);
+    const [votes, setVotes] = useState<VoteRecord[]>([]);
+    const [users, setUsers] = useState<Player[]>([]);
 
-    const setWho = (user?: Votant) => {
-        storeWhoId(user ? user.id : null);
-        setWhoState(user);
-        setPage(user ? "home" : "");
-    }
+    const who = useMemo(() => users.find((u) => u.id === session?.playerId), [users, session]);
 
-    const loadGestion = useCallback(async () => {
-        const items = await client.collection('gestion').getFullList<{ key: string, value: string }>();
-        const value = (key: string) => items.find((item) => item.key === key)?.value?.trim();
-        setPhase(parseInt(value("PHASE") || "") || 1);
-        setEdition(value("EDITION") || LEGACY_EDITION);
-        setEditionEnabled(!!value("EDITION"));
+    const loadGame = useCallback(async () => {
+        const {data, error} = await supabase.from('mf_game').select('edition, phase').single();
+        if (error) throw error;
+        setPhase(data.phase);
+        setEdition(data.edition);
     }, []);
 
     const loadMisses = useCallback(async () => {
-        const items = await client.collection("miss").getFullList<Miss>();
-        setAllMisses(items.map((item) => ({
-            ...item,
-            photoUrl: item.photo ? `${baseUrl}/api/files/miss/${item.id}/${item.photo}` : undefined,
+        const {data, error} = await supabase.from('mf_misses')
+            .select('id, edition, region, name, age, work, photo, result').order('region');
+        if (error) throw error;
+        setAllMisses(data.map((row) => ({
+            id: row.id,
+            edition: row.edition,
+            region: row.region,
+            name: row.name,
+            age: row.age,
+            work: row.work,
+            field: row.result ?? "",
+            photoUrl: photoUrl(row.photo),
         })));
     }, []);
 
-    // Le paramètre `votant` permet au serveur de renvoyer aussi mes votes de la phase en cours
-    // (voir pocketbase/README.md) ; ceux des autres n'arrivent qu'à la clôture de la phase.
-    const loadVotes = useCallback(async (votantId?: string) => {
-        const items = await client.collection('vote').getFullList<VoteRecord>(votantId ? {query: {votant: votantId}} : {});
-        setAllVotes(items);
+    const loadPlayers = useCallback(async () => {
+        const {data, error} = await supabase.from('mf_players').select('id, name, has_code').order('name');
+        if (error) throw error;
+        setUsers(data);
     }, []);
 
+    const loadVotes = useCallback(async (current: Session) => {
+        const {data, error} = await supabase.rpc('mf_my_votes', {p_player: current.playerId, p_code: current.code});
+        if (error) throw error;
+        setVotes(data);
+    }, []);
+
+    // Vérifie le code auprès du serveur (ou l'enregistre à la première connexion).
+    const login = async (player: Player, code: string): Promise<string | null> => {
+        const {data, error} = await supabase.rpc('mf_login', {p_player: player.id, p_code: code});
+        if (error) return "Connexion impossible, réessayez.";
+        if (data === 'invalid') return "Le code doit contenir 4 à 8 chiffres.";
+        if (data !== 'ok' && data !== 'created') return "Code incorrect.";
+        const next = {playerId: player.id, code};
+        storeSession(next);
+        setSession(next);
+        setPage("home");
+        if (data === 'created') loadPlayers().catch(console.error);
+        return null;
+    }
+
+    const logout = () => {
+        storeSession(null);
+        setSession(null);
+        setVotes([]);
+        setPage("");
+    }
+
     useEffect(() => {
-        loadGestion().catch(console.error);
+        loadGame().catch(console.error);
         loadMisses().catch(console.error);
-        client.collection('votant').getFullList<Votant>({sort: 'nom'}).then((response) => {
-            setUsers(response);
-            const stored = response.find((u) => u.id === storedWhoId());
-            if (stored) {
-                setWhoState(stored);
-                setPage("home");
-            }
-        }).catch(console.error);
+        loadPlayers().catch(console.error);
 
-        client.collection('gestion').subscribe('*', () => loadGestion().catch(console.error)).catch(console.error);
-        // Les résultats sont saisis sur les miss : le classement suit en direct.
-        client.collection('miss').subscribe('*', () => loadMisses().catch(console.error)).catch(console.error);
-        return () => {
-            client.collection('gestion').unsubscribe('*').catch(() => {});
-            client.collection('miss').unsubscribe('*').catch(() => {});
+        const stored = storedSession();
+        if (stored) {
+            supabase.rpc('mf_login', {p_player: stored.playerId, p_code: stored.code}).then(({data}) => {
+                if (data === 'ok') {
+                    setSession(stored);
+                    setPage("home");
+                } else if (data) {
+                    storeSession(null);
+                }
+            });
         }
-    }, [loadGestion, loadMisses]);
 
-    // À chaque changement de joueur, de phase ou d'édition : les votes visibles changent.
+        // L'app suit en direct les changements de phase et la saisie des résultats.
+        const channel = supabase.channel('mf')
+            .on('postgres_changes', {event: '*', schema: 'public', table: 'mf_game'}, () => loadGame().catch(console.error))
+            .on('postgres_changes', {event: '*', schema: 'public', table: 'mf_misses'}, () => loadMisses().catch(console.error))
+            .subscribe();
+        return () => {
+            supabase.removeChannel(channel);
+        }
+    }, [loadGame, loadMisses, loadPlayers]);
+
     useEffect(() => {
-        loadVotes(who?.id).catch(console.error);
-    }, [who, phase, edition, loadVotes]);
+        if (session) loadVotes(session).catch(console.error);
+    }, [session, edition, loadVotes]);
 
-    const misses = useMemo(() => allMisses.filter((m) => editionOf(m) === edition), [allMisses, edition]);
-    const votes = useMemo(
-        () => allVotes.filter((v) => v.votant === who?.id && editionOf(v) === edition),
-        [allVotes, who, edition],
+    const misses = useMemo(() => allMisses.filter((m) => m.edition === edition), [allMisses, edition]);
+    const editions = useMemo(
+        () => [...new Set([edition, ...allMisses.map((m) => m.edition)])].filter(Boolean).sort().reverse(),
+        [allMisses, edition],
     );
 
     const saveVote = async (step: number, number: number, miss: Miss) => {
-        if (!who) throw new Error("Aucun votant sélectionné");
+        if (!session) throw new Error("Choisissez d'abord qui vous êtes.");
         if (step !== phase) throw new Error("Cette phase de vote est fermée");
-        const existing = votes.find((v) => parseInt(v.phase) === step && v.voteNumber === number);
-        try {
-            if (existing) {
-                await client.collection('vote').update(existing.id, {miss: miss.id});
-            } else {
-                await client.collection('vote').create({
-                    phase: step.toString(),
-                    votant: who.id,
-                    miss: miss.id,
-                    voteNumber: number,
-                    ...(editionEnabled ? {edition} : {}),
-                });
-            }
-        } finally {
-            await loadVotes(who.id).catch(console.error);
-        }
+        const {error} = await supabase.rpc('mf_vote', {
+            p_player: session.playerId,
+            p_code: session.code,
+            p_phase: step,
+            p_slot: number,
+            p_miss: miss.id,
+        });
+        await loadVotes(session).catch(console.error);
+        if (error) throw new Error(error.message);
     }
 
   return (
@@ -136,8 +163,8 @@ function App() {
             <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
                 <div className="flex lg:flex-1 lg:flex-col">
                     {who && <span>
-                        <span>Votant:&nbsp;</span><span className="font-bold">{who.nom}</span>
-                        <button type="button" onClick={() => setWho(undefined)} className="ml-2 text-sm text-gray-500 underline">Changer</button>
+                        <span>Votant:&nbsp;</span><span className="font-bold">{who.name}</span>
+                        <button type="button" onClick={logout} className="ml-2 text-sm text-gray-500 underline">Changer</button>
                     </span>}
                 </div>
                 <div className="flex lg:hidden">
@@ -231,14 +258,14 @@ function App() {
                 </div>
             </div>
 
-            <SelectWho show={page === ""} users={users} setWho={setWho}></SelectWho>
+            <SelectWho show={page === ""} users={users} login={login}></SelectWho>
             <Home show={page === "home"} misses={misses}></Home>
             {who
                 ? <Vote show={page === "my-vote"} phase={phase} misses={misses} votes={votes} saveVote={saveVote}></Vote>
                 : page === "my-vote" && <p className="p-6 text-center">
                     <button type="button" onClick={() => setPage("")} className="underline">Choisissez d'abord qui vous êtes</button>
                 </p>}
-            <Rank show={page === "rank"} phase={phase} edition={edition} users={users} who={who} misses={allMisses} allVotes={allVotes}></Rank>
+            <Rank show={page === "rank"} phase={phase} edition={edition} editions={editions} who={who} misses={allMisses}></Rank>
 
 
         </div>
