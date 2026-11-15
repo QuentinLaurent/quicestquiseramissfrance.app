@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState} from "react";
+import {ChevronDownIcon} from "@heroicons/react/20/solid";
 import {Avatar, EmptyState} from "../components/ui.tsx";
 import {Miss, PHASES, RankingRow} from "../lib/game.ts";
 import {supabase} from "../lib/supabase.ts";
@@ -97,6 +98,41 @@ const Rank = ({phase, edition, editions, who, misses}: Props) => {
                     );
                 })}
             </ol>
+
+            <details className="card group mt-6" open={!scored}>
+                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 font-semibold text-wine-900 sm:px-5 [&::-webkit-details-marker]:hidden">
+                    Comment sont comptés les points ?
+                    <ChevronDownIcon className="size-5 shrink-0 transition group-open:rotate-180"/>
+                </summary>
+                <div className="space-y-4 border-t border-wine-100 px-4 py-4 text-sm sm:px-5">
+                    <p className="text-ink/70">
+                        Quatre phases de vote se succèdent pendant la soirée. Chaque bon pronostic rapporte des points,
+                        ajoutés au classement dès que la phase est clôturée.
+                    </p>
+                    <ol className="grid gap-3 sm:grid-cols-2">
+                        {PHASES.map((p) => (
+                            <li key={p.number} className="rounded-xl bg-wine-50 p-3">
+                                <p className="font-display text-base font-bold text-wine-900">{p.title}</p>
+                                <p className="text-xs text-ink/60">{p.intro}</p>
+                                <ul className="mt-2 space-y-1">
+                                    {p.scoring.map((rule) => (
+                                        <li key={rule.label} className="flex items-baseline justify-between gap-3">
+                                            <span>{rule.label}</span>
+                                            <span className="shrink-0 font-bold tabular-nums text-wine-700">+{rule.points} {rule.points > 1 ? "pts" : "pt"}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </li>
+                        ))}
+                    </ol>
+                    <ul className="list-disc space-y-1 pl-5 text-ink/70">
+                        <li>Une même miss ne peut être choisie qu'une fois par phase.</li>
+                        <li>Vos choix restent modifiables tant que la phase est ouverte.</li>
+                        <li>Dans le tiercé, une miss du podium rapporte ses points même placée dans la mauvaise case ; le bonus demande l'ordre exact.</li>
+                        <li>En cas d'égalité, les joueurs partagent le même rang.</li>
+                    </ul>
+                </div>
+            </details>
         </section>
     );
 }

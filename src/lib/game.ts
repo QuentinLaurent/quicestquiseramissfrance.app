@@ -56,6 +56,8 @@ export interface PhaseConfig {
     intro: string;
     rules: string;
     slots: string[];
+    // Barème détaillé, affiché dans le classement.
+    scoring: { label: string, points: number }[];
     // Niveau minimum pour être proposée au vote (les éliminées disparaissent).
     minLevel: number;
 }
@@ -80,6 +82,10 @@ export const PHASES: PhaseConfig[] = [
         intro: "Avant l'émission, choisir 5 miss sur photo.",
         rules: `${POINTS.missFrance} points si vous avez trouvé Miss France, ${POINTS.top5} points pour une miss dans les 5 dernières.`,
         slots: FIVE_SLOTS,
+        scoring: [
+            {label: "Miss France", points: POINTS.missFrance},
+            {label: "Une autre finaliste du Top 5", points: POINTS.top5},
+        ],
         minLevel: LEVEL.NONE,
     },
     {
@@ -88,6 +94,11 @@ export const PHASES: PhaseConfig[] = [
         intro: "Avant le vote des 15, choisir 5 miss.",
         rules: `${POINTS.missFrance} points si vous avez trouvé Miss France, ${POINTS.top5} points pour une miss dans les 5 dernières, ${POINTS.top15} point dans les 15 dernières.`,
         slots: FIVE_SLOTS,
+        scoring: [
+            {label: "Miss France", points: POINTS.missFrance},
+            {label: "Une autre finaliste du Top 5", points: POINTS.top5},
+            {label: "Une demi-finaliste du Top 15", points: POINTS.top15},
+        ],
         minLevel: LEVEL.NONE,
     },
     {
@@ -96,6 +107,11 @@ export const PHASES: PhaseConfig[] = [
         intro: "Avant le vote des 5 dernières, choisir 5 miss.",
         rules: `${POINTS.missFrance} points si vous avez trouvé Miss France, ${POINTS.phase3First} points pour la 1ère dauphine, ${POINTS.phase3Second} point pour la 2ème dauphine.`,
         slots: FIVE_SLOTS,
+        scoring: [
+            {label: "Miss France", points: POINTS.missFrance},
+            {label: "1ère dauphine", points: POINTS.phase3First},
+            {label: "2ème dauphine", points: POINTS.phase3Second},
+        ],
         minLevel: LEVEL.TOP15,
     },
     {
@@ -104,6 +120,12 @@ export const PHASES: PhaseConfig[] = [
         intro: "Le tiercé gagnant.",
         rules: `${POINTS.missFrance} points si vous avez trouvé Miss France, ${POINTS.phase4First} points pour la 1ère dauphine, ${POINTS.phase4Second} points pour la 2ème dauphine. ${POINTS.tierceBonus} points bonus si le tiercé est dans l'ordre.`,
         slots: ["Miss France", "1ère dauphine", "2ème dauphine"],
+        scoring: [
+            {label: "Miss France", points: POINTS.missFrance},
+            {label: "1ère dauphine", points: POINTS.phase4First},
+            {label: "2ème dauphine", points: POINTS.phase4Second},
+            {label: "Bonus si le tiercé est dans l'ordre", points: POINTS.tierceBonus},
+        ],
         minLevel: LEVEL.TOP5,
     },
 ];

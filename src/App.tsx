@@ -277,7 +277,7 @@ function App() {
                         ))}
                     </nav>
 
-                    <div className="ml-auto sm:ml-2">
+                    <div className="ml-auto shrink-0 sm:ml-2">
                         {who
                             ? <Menu as="div" className="relative">
                                 <MenuButton className="flex items-center gap-2 rounded-full p-1 pr-1 hover:bg-white/10 sm:pr-3">
@@ -296,7 +296,7 @@ function App() {
                                     </MenuItem>
                                 </MenuItems>
                             </Menu>
-                            : page !== "login" && <button type="button" onClick={() => navigate("login")} className="btn-gold !min-h-9 !px-4">Se connecter</button>}
+                            : page !== "login" && <button type="button" onClick={() => navigate("login")} className="btn-gold !min-h-9 shrink-0 whitespace-nowrap !px-4">Se connecter</button>}
                     </div>
                 </div>
             </header>
