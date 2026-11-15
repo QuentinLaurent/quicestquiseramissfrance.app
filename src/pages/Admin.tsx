@@ -40,7 +40,7 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
     const [newEdition, setNewEdition] = useState("");
     const [missForm, setMissForm] = useState<MissForm | null>(null);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
-    const [newPlayer, setNewPlayer] = useState("");
+    const [invite, setInvite] = useState("");
 
     useEffect(() => {
         supabase.auth.getSession().then(({data}) => setUserId(data.session?.user.id ?? null));
@@ -54,8 +54,13 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
             return;
         }
         let cancelled = false;
-        supabase.rpc('mf_is_admin').then(({data}) => {
-            if (!cancelled) setIsAdmin(data === true);
+        supabase.rpc('mf_is_admin').then(async ({data}) => {
+            if (cancelled) return;
+            setIsAdmin(data === true);
+            if (data === true) {
+                const secrets = await supabase.from('mf_secrets').select('invite_code').single();
+                if (!cancelled) setInvite(secrets.data?.invite_code ?? "");
+            }
         });
         return () => {
             cancelled = true;
@@ -167,17 +172,16 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
         await reloadMisses();
     }
 
-    const addPlayer = async (event: FormEvent) => {
+    const saveInvite = async (event: FormEvent) => {
         event.preventDefault();
-        const name = newPlayer.trim();
-        if (!name) return;
-        if (await run(`Ajout de ${name}`, async () => supabase.from('mf_players').insert({name}))) setNewPlayer("");
-        await reloadPlayers();
+        const code = invite.trim();
+        await run(code ? "Code d'invitation" : "Fermeture des inscriptions", async () =>
+            supabase.from('mf_secrets').update({invite_code: code || null}).eq('id', true));
     }
 
-    const resetCode = async (player: Player) => {
-        if (!window.confirm(`Réinitialiser le code de ${player.name} ? Il en choisira un nouveau à sa prochaine connexion.`)) return;
-        await run(`Code de ${player.name}`, async () => supabase.from('mf_players').update({code_hash: null}).eq('id', player.id));
+    const resetPassword = async (player: Player) => {
+        if (!window.confirm(`Effacer le mot de passe de ${player.name} ? Il devra se réinscrire avec le même pseudo et le code d'invitation.`)) return;
+        await run(`Mot de passe de ${player.name}`, async () => supabase.rpc('mf_admin_reset_password', {p_player: player.id}));
         await reloadPlayers();
     }
 
@@ -294,19 +298,23 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
 
                 <section>
                     <h2 className="font-bold uppercase">Joueurs ({users.length})</h2>
-                    <form onSubmit={addPlayer} className="mt-3 flex flex-wrap items-center gap-2">
-                        <input placeholder="Prénom du joueur" aria-label="Prénom du joueur"
-                               value={newPlayer} onChange={(e) => setNewPlayer(e.currentTarget.value)} className={input}/>
-                        <button type="submit" disabled={busy || !newPlayer.trim()} className={button}>Ajouter</button>
+                    <form onSubmit={saveInvite} className="mt-3 flex flex-wrap items-center gap-2">
+                        <label htmlFor="inviteCode" className="text-sm">Code d'invitation</label>
+                        <input id="inviteCode" value={invite} onChange={(e) => setInvite(e.currentTarget.value)}
+                               placeholder="vide = inscriptions fermées" className={input}/>
+                        <button type="submit" disabled={busy} className={button}>Enregistrer</button>
                     </form>
+                    <p className="mt-1 text-sm text-gray-600">
+                        Les joueurs s'inscrivent eux-mêmes avec ce code. Videz-le pour fermer les inscriptions.
+                    </p>
                     <ul className="mt-3">
                         {users.map((u) => (
                             <li key={u.id} className="flex flex-wrap items-center gap-2 border-b border-gray-300 py-2">
                                 <span className="min-w-40 flex-1">
                                     <span className="block font-bold">{u.name}</span>
-                                    <span className="block text-xs text-gray-500">{u.has_code ? "Code choisi" : "Pas encore connecté"}</span>
+                                    <span className="block text-xs text-gray-500">{u.has_code ? "Inscrit" : "Mot de passe effacé, doit se réinscrire"}</span>
                                 </span>
-                                {u.has_code && <button type="button" className={button} disabled={busy} onClick={() => resetCode(u)}>Réinitialiser le code</button>}
+                                {u.has_code && <button type="button" className={button} disabled={busy} onClick={() => resetPassword(u)}>Effacer le mot de passe</button>}
                                 <button type="button" className={button} disabled={busy} onClick={() => deletePlayer(u)}>Supprimer</button>
                             </li>
                         ))}

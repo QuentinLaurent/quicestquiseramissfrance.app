@@ -16,26 +16,26 @@ import {photoUrl, supabase} from "./lib/supabase.ts";
 
 const SESSION_STORAGE_KEY = "qcqsmf.session";
 
-interface Session {
-    playerId: string;
-    code: string;
+interface Me {
+    id: string;
+    name: string;
 }
 
-const storedSession = (): Session | null => {
+const storedToken = (): string | null => {
     try {
         const session = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
-        return session?.playerId && session?.code ? session : null;
+        return typeof session?.token === "string" ? session.token : null;
     } catch {
         return null;
     }
 }
 
-const storeSession = (session: Session | null) => {
+const storeToken = (token: string | null) => {
     try {
-        if (session) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+        if (token) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({token}));
         else localStorage.removeItem(SESSION_STORAGE_KEY);
     } catch {
-        // stockage indisponible (navigation privée) : on redemandera le code au prochain chargement
+        // stockage indisponible (navigation privée) : il faudra se reconnecter au prochain chargement
     }
 }
 
@@ -45,11 +45,10 @@ function App() {
     const [phase, setPhase] = useState(1);
     const [edition, setEdition] = useState("");
     const [allMisses, setAllMisses] = useState<Miss[]>([]);
-    const [session, setSession] = useState<Session | null>(null);
+    const [token, setToken] = useState<string | null>(null);
+    const [who, setWho] = useState<Me>();
     const [votes, setVotes] = useState<VoteRecord[]>([]);
     const [users, setUsers] = useState<Player[]>([]);
-
-    const who = useMemo(() => users.find((u) => u.id === session?.playerId), [users, session]);
 
     const loadGame = useCallback(async () => {
         const {data, error} = await supabase.from('mf_game').select('edition, phase').single();
@@ -80,31 +79,46 @@ function App() {
         setUsers(data);
     }, []);
 
-    const loadVotes = useCallback(async (current: Session) => {
-        const {data, error} = await supabase.rpc('mf_my_votes', {p_player: current.playerId, p_code: current.code});
-        if (error) throw error;
-        setVotes(data);
+    const logout = useCallback((current?: string | null) => {
+        if (current) supabase.rpc('mf_sign_out', {p_token: current}).then(() => undefined, () => undefined);
+        storeToken(null);
+        setToken(null);
+        setWho(undefined);
+        setVotes([]);
+        setPage("");
     }, []);
 
-    // Vérifie le code auprès du serveur (ou l'enregistre à la première connexion).
-    const login = async (player: Player, code: string): Promise<string | null> => {
-        const {data, error} = await supabase.rpc('mf_login', {p_player: player.id, p_code: code});
-        if (error) return "Connexion impossible, réessayez.";
-        if (data === 'invalid') return "Le code doit contenir 4 à 8 chiffres.";
-        if (data !== 'ok' && data !== 'created') return "Code incorrect.";
-        const next = {playerId: player.id, code};
-        storeSession(next);
-        setSession(next);
+    const loadVotes = useCallback(async (current: string) => {
+        const {data, error} = await supabase.rpc('mf_my_votes', {p_token: current});
+        if (error) {
+            // Session supprimée côté serveur (mot de passe réinitialisé, joueur supprimé).
+            if (error.code === '28000') logout();
+            throw error;
+        }
+        setVotes(data);
+    }, [logout]);
+
+    const open = (result: { token: string, id: string, name: string }) => {
+        storeToken(result.token);
+        setToken(result.token);
+        setWho({id: result.id, name: result.name});
         setPage("home");
-        if (data === 'created') loadPlayers().catch(console.error);
+    }
+
+    // Les deux renvoient un message d'erreur, ou null si la connexion a réussi.
+    const signIn = async (name: string, password: string): Promise<string | null> => {
+        const {data, error} = await supabase.rpc('mf_sign_in', {p_name: name, p_password: password});
+        if (error) return error.message || "Connexion impossible, réessayez.";
+        open(data);
         return null;
     }
 
-    const logout = () => {
-        storeSession(null);
-        setSession(null);
-        setVotes([]);
-        setPage("");
+    const register = async (name: string, password: string, invite: string): Promise<string | null> => {
+        const {data, error} = await supabase.rpc('mf_register', {p_name: name, p_password: password, p_invite: invite});
+        if (error) return error.message || "Inscription impossible, réessayez.";
+        open(data);
+        loadPlayers().catch(console.error);
+        return null;
     }
 
     useEffect(() => {
@@ -112,14 +126,15 @@ function App() {
         loadMisses().catch(console.error);
         loadPlayers().catch(console.error);
 
-        const stored = storedSession();
+        const stored = storedToken();
         if (stored) {
-            supabase.rpc('mf_login', {p_player: stored.playerId, p_code: stored.code}).then(({data}) => {
-                if (data === 'ok') {
-                    setSession(stored);
+            supabase.rpc('mf_me', {p_token: stored}).then(({data, error}) => {
+                if (data) {
+                    setToken(stored);
+                    setWho(data);
                     setPage("home");
-                } else if (data) {
-                    storeSession(null);
+                } else if (!error) {
+                    storeToken(null);
                 }
             });
         }
@@ -135,8 +150,8 @@ function App() {
     }, [loadGame, loadMisses, loadPlayers]);
 
     useEffect(() => {
-        if (session) loadVotes(session).catch(console.error);
-    }, [session, edition, loadVotes]);
+        if (token) loadVotes(token).catch(console.error);
+    }, [token, edition, loadVotes]);
 
     // La liste des joueurs n'est pas suivie en direct : on la rafraîchit à l'ouverture de l'admin.
     useEffect(() => {
@@ -150,16 +165,10 @@ function App() {
     );
 
     const saveVote = async (step: number, number: number, miss: Miss) => {
-        if (!session) throw new Error("Choisissez d'abord qui vous êtes.");
+        if (!token) throw new Error("Connectez-vous d'abord.");
         if (step !== phase) throw new Error("Cette phase de vote est fermée");
-        const {error} = await supabase.rpc('mf_vote', {
-            p_player: session.playerId,
-            p_code: session.code,
-            p_phase: step,
-            p_slot: number,
-            p_miss: miss.id,
-        });
-        await loadVotes(session).catch(console.error);
+        const {error} = await supabase.rpc('mf_vote', {p_token: token, p_phase: step, p_slot: number, p_miss: miss.id});
+        await loadVotes(token).catch(console.error);
         if (error) throw new Error(error.message);
     }
 
@@ -169,8 +178,8 @@ function App() {
             <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
                 <div className="flex lg:flex-1 lg:flex-col">
                     {who && <span>
-                        <span>Votant:&nbsp;</span><span className="font-bold">{who.name}</span>
-                        <button type="button" onClick={logout} className="ml-2 text-sm text-gray-500 underline">Changer</button>
+                        <span>Joueur:&nbsp;</span><span className="font-bold">{who.name}</span>
+                        <button type="button" onClick={() => logout(token)} className="ml-2 text-sm text-gray-500 underline">Se déconnecter</button>
                     </span>}
                 </div>
                 <div className="flex lg:hidden">
@@ -270,12 +279,12 @@ function App() {
                 </div>
             </div>
 
-            <SelectWho show={page === ""} users={users} login={login}></SelectWho>
+            <SelectWho show={page === ""} signIn={signIn} register={register}></SelectWho>
             <Home show={page === "home"} misses={misses}></Home>
             {who
                 ? <Vote show={page === "my-vote"} phase={phase} misses={misses} votes={votes} saveVote={saveVote}></Vote>
                 : page === "my-vote" && <p className="p-6 text-center">
-                    <button type="button" onClick={() => setPage("")} className="underline">Choisissez d'abord qui vous êtes</button>
+                    <button type="button" onClick={() => setPage("")} className="underline">Connectez-vous pour voter</button>
                 </p>}
             <Rank show={page === "rank"} phase={phase} edition={edition} editions={editions} who={who} misses={allMisses}></Rank>
             <Admin show={page === "admin"} phase={phase} edition={edition} misses={misses} users={users}

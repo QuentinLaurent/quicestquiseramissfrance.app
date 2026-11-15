@@ -21,14 +21,17 @@ Miss France est préfixé `mf_`. Le schéma complet est dans `supabase/migration
 | Table | Contenu |
 | --- | --- |
 | `mf_game` | Une seule ligne : `edition` en cours et `phase` (1 à 4 = votes ouverts, 5 = terminé) |
-| `mf_players` | Les joueurs (`name`). `code_hash` est rempli à leur première connexion |
+| `mf_players` | Les joueurs (`name`) et leur mot de passe chiffré (`code_hash`) |
+| `mf_sessions` | Les sessions ouvertes (le navigateur garde un jeton, jamais le mot de passe) |
+| `mf_secrets` | Le code d'invitation à donner aux joueurs |
 | `mf_misses` | Les candidates par `edition`, et leur `result` pendant l'émission |
 | `mf_votes` | Les votes. Illisibles directement : l'app passe par des fonctions |
 
 Le navigateur ne peut que lire `mf_game`, `mf_misses` et le nom des joueurs. Voter,
-relire ses votes et calculer le classement passent par les fonctions `mf_login`,
-`mf_vote`, `mf_my_votes` et `mf_ranking`, qui vérifient le code du joueur, la phase
-en cours et l'unicité des choix.
+S'inscrire, se connecter, voter, relire ses votes et calculer le classement passent
+par des fonctions (`mf_register`, `mf_sign_in`, `mf_vote`, `mf_my_votes`, `mf_ranking`…)
+qui vérifient le code d'invitation, la session du joueur, la phase en cours et
+l'unicité des choix.
 
 ## Administrer une édition
 
@@ -38,7 +41,8 @@ Le Table Editor de Supabase reste utilisable en secours.
 
 **Avant l'émission**
 
-1. `mf_players` : une ligne par joueur (`name` seulement).
+1. Définir le code d'invitation dans la page Admin et le donner aux joueurs, qui
+   s'inscrivent eux-mêmes (pseudo, mot de passe, code d'invitation).
 2. Storage, bucket `miss-photos` : déposer les photos.
 3. `mf_misses` : une ligne par candidate avec `edition`, `region`, `name`, `age`,
    `work` et `photo` (nom du fichier dans le bucket, ou URL complète). Laisser `result` vide.
@@ -56,7 +60,8 @@ classement qu'une fois la phase suivante ouverte.
 
 **Dépannage**
 
-- Code oublié : vider `code_hash` du joueur, il en choisira un nouveau.
+- Mot de passe oublié : « Effacer le mot de passe » dans la page Admin ; le joueur se
+  réinscrit avec le même pseudo et garde ses votes.
 - Édition suivante : changer `edition` dans `mf_game`, remettre `phase` à 1 et saisir
   les nouvelles candidates. L'ancien classement reste consultable dans l'app.
 

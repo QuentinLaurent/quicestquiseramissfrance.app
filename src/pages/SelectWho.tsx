@@ -1,58 +1,61 @@
 import {FormEvent, useState} from "react";
-import {Player} from "../lib/game.ts";
 
 interface Props {
-    users: Player[];
-    // Renvoie un message d'erreur, ou null si la connexion a réussi.
-    login: (player: Player, code: string) => Promise<string | null>;
+    // Les deux renvoient un message d'erreur, ou null si la connexion a réussi.
+    signIn: (name: string, password: string) => Promise<string | null>;
+    register: (name: string, password: string, invite: string) => Promise<string | null>;
     show: boolean;
 }
 
-const SelectWho = ({users = [], login, show}: Props) => {
-    const [selected, setSelected] = useState<Player | null>(null);
-    const [code, setCode] = useState("");
+const field = "w-64 rounded border border-gray-300 p-2";
+
+const SelectWho = ({signIn, register, show}: Props) => {
+    const [mode, setMode] = useState<"login" | "register">("login");
+    const [name, setName] = useState("");
+    const [password, setPassword] = useState("");
+    const [invite, setInvite] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
-    const choose = (player: Player | null) => {
-        setSelected(player);
-        setCode("");
+    const switchMode = (next: "login" | "register") => {
+        setMode(next);
         setError(null);
     }
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
-        if (!selected || busy) return;
+        if (busy) return;
         setBusy(true);
-        const message = await login(selected, code);
+        const message = mode === "login"
+            ? await signIn(name, password)
+            : await register(name, password, invite);
         setBusy(false);
-        if (message) setError(message);
-        else choose(null);
+        setError(message);
+        if (!message) {
+            setPassword("");
+            setInvite("");
+        }
     }
 
-    return <div className={"flex flex-col items-center p-6 gap-4 " + (!show ? 'hidden' : '')}>
-        {!selected && <>
-            <h1 className="text-2xl font-bold">Qui êtes-vous?</h1>
-            {users.map((u) => (
-                <button key={u.id} onClick={() => choose(u)} className="bg-gray-200 p-2 rounded font-bold min-w-40 hover:bg-[#9c272e] hover:text-white">{u.name}</button>
-            ))}
-        </>}
-        {selected && <form onSubmit={submit} className="flex flex-col items-center gap-4">
-            <h1 className="text-2xl font-bold">Bonjour {selected.name}</h1>
-            <label htmlFor="playerCode" className="text-center">
-                {selected.has_code
-                    ? "Entrez votre code personnel."
-                    : <>Première visite : choisissez un code de 4 à 8 chiffres.<br/>Il vous sera redemandé sur un autre appareil.</>}
-            </label>
-            <input id="playerCode" type="password" inputMode="numeric" autoComplete="off" autoFocus
-                   pattern="[0-9]{4,8}" maxLength={8} required
-                   value={code} onChange={(e) => setCode(e.currentTarget.value)}
-                   className="w-40 rounded border border-gray-300 p-2 text-center text-xl tracking-widest"/>
-            {error && <p role="alert" className="rounded bg-red-100 px-3 py-2 text-sm text-red-900">{error}</p>}
-            <button type="submit" disabled={busy} className="min-w-40 rounded bg-[#9c272e] p-2 font-bold text-white disabled:opacity-50">Valider</button>
-            <button type="button" onClick={() => choose(null)} className="text-sm text-gray-500 underline">Ce n'est pas moi</button>
-        </form>}
-    </div>
+    return <form onSubmit={submit} className={"flex flex-col items-center p-6 gap-4 " + (!show ? 'hidden' : '')}>
+        <h1 className="text-2xl font-bold">{mode === "login" ? "Connexion" : "Inscription"}</h1>
+        <input aria-label="Pseudo" placeholder="Pseudo" required minLength={2} maxLength={24} autoComplete="username"
+               value={name} onChange={(e) => setName(e.currentTarget.value)} className={field}/>
+        <input aria-label="Mot de passe" placeholder="Mot de passe" type="password" required
+               minLength={mode === "register" ? 6 : undefined} maxLength={72}
+               autoComplete={mode === "login" ? "current-password" : "new-password"}
+               value={password} onChange={(e) => setPassword(e.currentTarget.value)} className={field}/>
+        {mode === "register" && <input aria-label="Code d'invitation" placeholder="Code d'invitation" required autoComplete="off"
+               value={invite} onChange={(e) => setInvite(e.currentTarget.value)} className={field}/>}
+        {mode === "register" && <p className="text-center text-sm text-gray-600">Mot de passe : 6 caractères minimum.</p>}
+        {error && <p role="alert" className="rounded bg-red-100 px-3 py-2 text-sm text-red-900">{error}</p>}
+        <button type="submit" disabled={busy} className="min-w-40 rounded bg-[#9c272e] p-2 font-bold text-white disabled:opacity-50">
+            {mode === "login" ? "Se connecter" : "S'inscrire"}
+        </button>
+        {mode === "login"
+            ? <button type="button" onClick={() => switchMode("register")} className="text-sm text-gray-500 underline">Pas encore de compte ? S'inscrire</button>
+            : <button type="button" onClick={() => switchMode("login")} className="text-sm text-gray-500 underline">Déjà un compte ? Se connecter</button>}
+    </form>
 }
 
 export default SelectWho;

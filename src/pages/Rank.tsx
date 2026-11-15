@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from "react";
-import {Miss, PHASES, Player, RankingRow} from "../lib/game.ts";
+import {Miss, PHASES, RankingRow} from "../lib/game.ts";
 import {supabase} from "../lib/supabase.ts";
 
 interface Props {
@@ -7,7 +7,7 @@ interface Props {
     phase: number;
     edition: string;
     editions: string[];
-    who?: Player;
+    who?: { id: string };
     // Les résultats sont saisis sur les miss : tout changement recalcule le classement.
     misses: Miss[];
 }
