@@ -3,7 +3,6 @@ import {FINISHED_PHASE, levelOf, LEVEL, Miss, PHASES, Player} from "../lib/game.
 import {supabase} from "../lib/supabase.ts";
 
 interface Props {
-    show: boolean;
     phase: number;
     edition: string;
     misses: Miss[];
@@ -26,11 +25,11 @@ interface MissForm {
 
 const EMPTY_MISS: MissForm = {region: "", name: "", age: "", work: "", photo: ""};
 
-const button = "rounded bg-gray-200 px-3 py-1 text-sm font-bold hover:bg-gray-300 disabled:opacity-50";
-const primary = "rounded bg-[#9c272e] px-3 py-1 text-sm font-bold text-white disabled:opacity-50";
-const input = "rounded border border-gray-300 px-2 py-1 text-sm";
+const button = "btn-ghost !min-h-9 !px-4";
+const primary = "btn-primary !min-h-9 !px-4";
+const input = "field !min-h-10 !text-sm sm:!w-auto";
 
-const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, reloadPlayers}: Props) => {
+const Admin = ({phase, edition, misses, users, reloadGame, reloadMisses, reloadPlayers}: Props) => {
     const [userId, setUserId] = useState<string | null | undefined>(undefined);
     const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
     const [email, setEmail] = useState("");
@@ -194,33 +193,31 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
     const countAtLeast = (level: number) => misses.filter((m) => levelOf(m) >= level).length;
 
     return (
-        <div className={(!show ? 'hidden' : '') + " mx-auto mb-40 max-w-3xl"}>
-            <p className="text-center uppercase mt-4 text-pretty text-lg font-medium text-gray-900 sm:text-xl/8">
-                Administration
-            </p>
+        <section className="mx-auto max-w-3xl">
+            <h1 className="page-title">Administration</h1>
 
             {status && <p role="status"
-                          className={"mx-auto mt-4 max-w-md rounded px-3 py-2 text-center text-sm " + (status.ok ? "bg-green-100 text-green-900" : "bg-red-100 text-red-900")}>
+                          className={"mt-4 rounded-xl px-4 py-3 text-sm font-semibold " + (status.ok ? "bg-green-50 text-green-900" : "bg-red-50 text-red-800")}>
                 {status.text}
             </p>}
 
-            {userId === null && <form onSubmit={login} className="mt-6 flex flex-col items-center gap-3">
+            {userId === null && <form onSubmit={login} className="card mx-auto mt-6 flex max-w-sm flex-col gap-3 p-5">
                 <input type="email" required autoComplete="username" placeholder="E-mail" aria-label="E-mail"
-                       value={email} onChange={(e) => setEmail(e.currentTarget.value)} className={input + " w-64"}/>
+                       value={email} onChange={(e) => setEmail(e.currentTarget.value)} className="field"/>
                 <input type="password" required autoComplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe"
-                       value={password} onChange={(e) => setPassword(e.currentTarget.value)} className={input + " w-64"}/>
-                <button type="submit" disabled={busy} className={primary}>Se connecter</button>
+                       value={password} onChange={(e) => setPassword(e.currentTarget.value)} className="field"/>
+                <button type="submit" disabled={busy} className="btn-primary">Se connecter</button>
             </form>}
 
-            {userId && isAdmin === false && <div className="mt-6 text-center">
+            {userId && isAdmin === false && <div className="card mt-6 p-6 text-center">
                 <p>Ce compte n'a pas les droits d'administration.</p>
                 <button type="button" onClick={logout} className={button + " mt-3"}>Se déconnecter</button>
             </div>}
 
-            {userId && isAdmin && <div className="mt-6 space-y-10">
-                <section>
+            {userId && isAdmin && <div className="mt-6 space-y-5">
+                <section className="card p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                        <h2 className="font-bold uppercase">Édition {edition}</h2>
+                        <h2 className="font-display text-lg font-bold text-wine-900">Édition {edition}</h2>
                         <button type="button" onClick={logout} className={button}>Se déconnecter</button>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -231,7 +228,7 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
                             </button>
                         ))}
                     </div>
-                    <p className="mt-2 text-sm text-gray-600">
+                    <p className="mt-2 text-sm text-ink/60">
                         Saisir les qualifiées avant d'ouvrir la phase 3 (Top 15) et la phase 4 (Top 5).
                         Les points d'une phase apparaissent au classement quand la suivante est ouverte.
                     </p>
@@ -242,20 +239,20 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
                     </form>
                 </section>
 
-                <section>
+                <section className="card p-4 sm:p-5">
                     <div className="flex items-center justify-between">
-                        <h2 className="font-bold uppercase">Miss ({misses.length})</h2>
+                        <h2 className="font-display text-lg font-bold text-wine-900">Miss ({misses.length})</h2>
                         <button type="button" className={button} onClick={() => {
                             setPhotoFile(null);
                             setMissForm(EMPTY_MISS);
                         }}>Ajouter une miss</button>
                     </div>
-                    <p className="mt-1 text-sm text-gray-600">
+                    <p className="mt-1 text-sm text-ink/60">
                         Top 15 : {countAtLeast(LEVEL.TOP15)} · Top 5 : {countAtLeast(LEVEL.TOP5)} ·
                         Podium : {countAtLeast(LEVEL.SECOND_DAUPHINE)}
                     </p>
 
-                    {missForm && <form onSubmit={saveMiss} className="mt-3 grid gap-2 rounded bg-gray-100 p-3 sm:grid-cols-2">
+                    {missForm && <form onSubmit={saveMiss} className="mt-3 grid gap-2 rounded-2xl bg-wine-50 p-3 sm:grid-cols-2">
                         <input required placeholder="Région" aria-label="Région" value={missForm.region}
                                onChange={(e) => setMissForm({...missForm, region: e.currentTarget.value})} className={input}/>
                         <input placeholder="Nom" aria-label="Nom" value={missForm.name}
@@ -278,14 +275,14 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
 
                     <ul className="mt-3">
                         {misses.map((m) => (
-                            <li key={m.id} className="flex flex-wrap items-center gap-2 border-b border-gray-300 py-2">
+                            <li key={m.id} className="flex flex-wrap items-center gap-2 border-b border-wine-100 py-2.5 last:border-0">
                                 <span className="min-w-40 flex-1">
                                     <span className="block font-bold">{m.region}</span>
-                                    <span className="block text-xs text-gray-500">{m.name}</span>
+                                    <span className="block text-xs text-ink/50">{m.name}</span>
                                 </span>
                                 <select aria-label={`Résultat de Miss ${m.region}`} value={m.field} disabled={busy}
                                         onChange={(e) => setResult(m, e.currentTarget.value)}
-                                        className={input + (m.field ? " bg-rose-50 font-bold" : "")}>
+                                        className={input + " !w-auto" + (m.field ? " !bg-gold-100 font-bold" : "")}>
                                     <option value="">En lice</option>
                                     {RESULTS.map((r) => <option key={r} value={r}>{r}</option>)}
                                 </select>
@@ -296,23 +293,23 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
                     </ul>
                 </section>
 
-                <section>
-                    <h2 className="font-bold uppercase">Joueurs ({users.length})</h2>
+                <section className="card p-4 sm:p-5">
+                    <h2 className="font-display text-lg font-bold text-wine-900">Joueurs ({users.length})</h2>
                     <form onSubmit={saveInvite} className="mt-3 flex flex-wrap items-center gap-2">
                         <label htmlFor="inviteCode" className="text-sm">Code d'invitation</label>
                         <input id="inviteCode" value={invite} onChange={(e) => setInvite(e.currentTarget.value)}
                                placeholder="vide = inscriptions fermées" className={input}/>
                         <button type="submit" disabled={busy} className={button}>Enregistrer</button>
                     </form>
-                    <p className="mt-1 text-sm text-gray-600">
+                    <p className="mt-1 text-sm text-ink/60">
                         Les joueurs s'inscrivent eux-mêmes avec ce code. Videz-le pour fermer les inscriptions.
                     </p>
                     <ul className="mt-3">
                         {users.map((u) => (
-                            <li key={u.id} className="flex flex-wrap items-center gap-2 border-b border-gray-300 py-2">
+                            <li key={u.id} className="flex flex-wrap items-center gap-2 border-b border-wine-100 py-2.5 last:border-0">
                                 <span className="min-w-40 flex-1">
                                     <span className="block font-bold">{u.name}</span>
-                                    <span className="block text-xs text-gray-500">{u.has_code ? "Inscrit" : "Mot de passe effacé, doit se réinscrire"}</span>
+                                    <span className="block text-xs text-ink/50">{u.has_code ? "Inscrit" : "Mot de passe effacé, doit se réinscrire"}</span>
                                 </span>
                                 {u.has_code && <button type="button" className={button} disabled={busy} onClick={() => resetPassword(u)}>Effacer le mot de passe</button>}
                                 <button type="button" className={button} disabled={busy} onClick={() => deletePlayer(u)}>Supprimer</button>
@@ -321,7 +318,7 @@ const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, r
                     </ul>
                 </section>
             </div>}
-        </div>
+        </section>
     );
 }
 

@@ -3,6 +3,10 @@
 Jeu de pronostics entre amis pour l'élection de Miss France. Site statique
 (React + Vite + Tailwind), données dans Supabase.
 
+L'app est installable sur téléphone (PWA) : « Ajouter à l'écran d'accueil » depuis le
+navigateur. Elle se met à jour toute seule à chaque publication ; les photos restent
+visibles hors connexion, les votes et le classement demandent le réseau.
+
 ## Développement
 
 ```

@@ -1,24 +1,43 @@
-import './App.css'
-import logo from './assets/logo.svg'
-import logoLight from './assets/logo-light.svg'
 import {useCallback, useEffect, useMemo, useState} from "react";
-import {Bars3Icon} from "@heroicons/react/20/solid";
-import {Dialog, DialogPanel} from "@headlessui/react";
-import {XMarkIcon} from "@heroicons/react/16/solid";
-import Home from "./pages/Home.tsx";
+import {Menu, MenuButton, MenuItem, MenuItems} from "@headlessui/react";
+import {HeartIcon, TrophyIcon, UserGroupIcon} from "@heroicons/react/24/outline";
+import {
+    HeartIcon as HeartSolid,
+    TrophyIcon as TrophySolid,
+    UserGroupIcon as UserGroupSolid,
+} from "@heroicons/react/24/solid";
+import {CheckCircleIcon, ExclamationCircleIcon} from "@heroicons/react/20/solid";
+import logoLight from './assets/logo-light.svg'
+import Home, {PickState} from "./pages/Home.tsx";
 import Vote from "./pages/Vote.tsx";
 import Rank from "./pages/Rank.tsx";
 import Admin from "./pages/Admin.tsx";
-import SelectWho from "./pages/SelectWho.tsx";
-import {Miss, Player, VoteRecord} from "./lib/game.ts";
+import Login from "./pages/Login.tsx";
+import {Avatar} from "./components/ui.tsx";
+import {candidatesFor, FINISHED_PHASE, Miss, PHASES, Player, VoteRecord} from "./lib/game.ts";
 import {photoUrl, supabase} from "./lib/supabase.ts";
 
 
 const SESSION_STORAGE_KEY = "qcqsmf.session";
 
+type Page = "login" | "miss" | "votes" | "rank" | "admin";
+const PAGES: Page[] = ["login", "miss", "votes", "rank", "admin"];
+
+const TABS = [
+    {page: "miss" as Page, label: "Les Miss", icon: UserGroupIcon, activeIcon: UserGroupSolid},
+    {page: "votes" as Page, label: "Mes votes", icon: HeartIcon, activeIcon: HeartSolid},
+    {page: "rank" as Page, label: "Classement", icon: TrophyIcon, activeIcon: TrophySolid},
+];
+
 interface Me {
     id: string;
     name: string;
+}
+
+interface Toast {
+    id: number;
+    ok: boolean;
+    text: string;
 }
 
 const storedToken = (): string | null => {
@@ -39,16 +58,51 @@ const storeToken = (token: string | null) => {
     }
 }
 
+// La page courante est dans l'adresse (#/votes) : le bouton retour du téléphone fonctionne.
+const pageFromHash = (): Page | null => {
+    const name = window.location.hash.replace(/^#\/?/, "") as Page;
+    return PAGES.includes(name) ? name : null;
+}
+
 function App() {
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-    const [page, setPage] = useState("")
+    const [page, setPage] = useState<Page>(() => pageFromHash() ?? (storedToken() ? "miss" : "login"));
     const [phase, setPhase] = useState(1);
     const [edition, setEdition] = useState("");
     const [allMisses, setAllMisses] = useState<Miss[]>([]);
+    const [missesLoaded, setMissesLoaded] = useState(false);
     const [token, setToken] = useState<string | null>(null);
     const [who, setWho] = useState<Me>();
     const [votes, setVotes] = useState<VoteRecord[]>([]);
     const [users, setUsers] = useState<Player[]>([]);
+    const [toast, setToast] = useState<Toast | null>(null);
+    const [online, setOnline] = useState(() => navigator.onLine);
+
+    const navigate = useCallback((next: Page) => {
+        if (pageFromHash() === next) setPage(next);
+        else window.location.hash = `#/${next}`;
+        window.scrollTo(0, 0);
+    }, []);
+
+    const notify = useCallback((ok: boolean, text: string) => setToast({id: Date.now(), ok, text}), []);
+
+    useEffect(() => {
+        const onHash = () => setPage(pageFromHash() ?? "miss");
+        const onOnline = () => setOnline(navigator.onLine);
+        window.addEventListener("hashchange", onHash);
+        window.addEventListener("online", onOnline);
+        window.addEventListener("offline", onOnline);
+        return () => {
+            window.removeEventListener("hashchange", onHash);
+            window.removeEventListener("online", onOnline);
+            window.removeEventListener("offline", onOnline);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!toast) return;
+        const timer = window.setTimeout(() => setToast(null), 3500);
+        return () => window.clearTimeout(timer);
+    }, [toast]);
 
     const loadGame = useCallback(async () => {
         const {data, error} = await supabase.from('mf_game').select('edition, phase').single();
@@ -71,6 +125,7 @@ function App() {
             field: row.result ?? "",
             photoUrl: photoUrl(row.photo),
         })));
+        setMissesLoaded(true);
     }, []);
 
     const loadPlayers = useCallback(async () => {
@@ -85,13 +140,13 @@ function App() {
         setToken(null);
         setWho(undefined);
         setVotes([]);
-        setPage("");
-    }, []);
+        navigate("login");
+    }, [navigate]);
 
     const loadVotes = useCallback(async (current: string) => {
         const {data, error} = await supabase.rpc('mf_my_votes', {p_token: current});
         if (error) {
-            // Session supprimée côté serveur (mot de passe réinitialisé, joueur supprimé).
+            // Session supprimée côté serveur (mot de passe effacé, joueur supprimé).
             if (error.code === '28000') logout();
             throw error;
         }
@@ -102,7 +157,7 @@ function App() {
         storeToken(result.token);
         setToken(result.token);
         setWho({id: result.id, name: result.name});
-        setPage("home");
+        navigate("miss");
     }
 
     // Les deux renvoient un message d'erreur, ou null si la connexion a réussi.
@@ -117,14 +172,13 @@ function App() {
         const {data, error} = await supabase.rpc('mf_register', {p_name: name, p_password: password, p_invite: invite});
         if (error) return error.message || "Inscription impossible, réessayez.";
         open(data);
-        loadPlayers().catch(console.error);
+        notify(true, `Bienvenue ${data.name} !`);
         return null;
     }
 
     useEffect(() => {
         loadGame().catch(console.error);
         loadMisses().catch(console.error);
-        loadPlayers().catch(console.error);
 
         const stored = storedToken();
         if (stored) {
@@ -132,9 +186,10 @@ function App() {
                 if (data) {
                     setToken(stored);
                     setWho(data);
-                    setPage("home");
+                    if (pageFromHash() === "login") navigate("miss");
                 } else if (!error) {
                     storeToken(null);
+                    if (pageFromHash() === null) navigate("login");
                 }
             });
         }
@@ -147,13 +202,13 @@ function App() {
         return () => {
             supabase.removeChannel(channel);
         }
-    }, [loadGame, loadMisses, loadPlayers]);
+    }, [loadGame, loadMisses, navigate]);
 
     useEffect(() => {
         if (token) loadVotes(token).catch(console.error);
     }, [token, edition, loadVotes]);
 
-    // La liste des joueurs n'est pas suivie en direct : on la rafraîchit à l'ouverture de l'admin.
+    // La liste des joueurs ne sert qu'à l'admin et n'est pas suivie en direct.
     useEffect(() => {
         if (page === "admin") loadPlayers().catch(console.error);
     }, [page, loadPlayers]);
@@ -164,136 +219,159 @@ function App() {
         [allMisses, edition],
     );
 
-    const saveVote = async (step: number, number: number, miss: Miss) => {
-        if (!token) throw new Error("Connectez-vous d'abord.");
-        if (step !== phase) throw new Error("Cette phase de vote est fermée");
-        const {error} = await supabase.rpc('mf_vote', {p_token: token, p_phase: step, p_slot: number, p_miss: miss.id});
+    const current = PHASES.find((p) => p.number === phase);
+    const picks = useMemo(
+        () => current ? current.slots.map((_, i) => votes.find((v) => v.phase === current.number && v.slot === i + 1)?.miss_id ?? null) : [],
+        [current, votes],
+    );
+    const picksDone = picks.filter(Boolean).length;
+
+    const vote = async (step: number, slot: number, miss: Miss): Promise<boolean> => {
+        if (!token) {
+            notify(false, "Connectez-vous pour voter.");
+            return false;
+        }
+        const {error} = await supabase.rpc('mf_vote', {p_token: token, p_phase: step, p_slot: slot, p_miss: miss.id});
         await loadVotes(token).catch(console.error);
-        if (error) throw new Error(error.message);
+        if (error) {
+            notify(false, error.message || "Le vote n'a pas été enregistré.");
+            return false;
+        }
+        notify(true, `Miss ${miss.region} enregistrée`);
+        return true;
     }
 
-  return (
-    <div className="bg-white">
-        <header className="absolute inset-x-0 top-0 z-50">
-            <nav aria-label="Global" className="flex items-center justify-between p-6 lg:px-8">
-                <div className="flex lg:flex-1 lg:flex-col">
-                    {who && <span>
-                        <span>Joueur:&nbsp;</span><span className="font-bold">{who.name}</span>
-                        <button type="button" onClick={() => logout(token)} className="ml-2 text-sm text-gray-500 underline">Se déconnecter</button>
-                    </span>}
-                </div>
-                <div className="flex lg:hidden">
-                <button
-                        type="button"
-                        onClick={() => setMobileMenuOpen(true)}
-                        className="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-gray-700"
-                    >
-                        <span className="sr-only">Ouvrir le menu</span>
-                        <Bars3Icon aria-hidden="true" className="size-6"/>
+    const pickStateOf = (miss: Miss): PickState => {
+        if (!current) return {kind: "closed"};
+        if (!token) return {kind: "anonymous"};
+        const index = picks.indexOf(miss.id);
+        if (index >= 0) return {kind: "picked", slot: current.slots.length === 3 ? current.slots[index] : `case ${index + 1}`};
+        if (!candidatesFor(current, misses).some((m) => m.id === miss.id)) return {kind: "eliminated"};
+        if (picksDone >= current.slots.length) return {kind: "full"};
+        return {kind: "available"};
+    }
+
+    const quickPick = (miss: Miss) => current ? vote(current.number, picks.indexOf(null) + 1, miss) : Promise.resolve(false);
+
+    const votesPending = !!token && !!current && picksDone < current.slots.length;
+    const showChrome = page !== "login";
+
+    return (
+        <div className="flex min-h-dvh flex-col">
+            <header className="sticky top-0 z-30 bg-wine-900 pt-[env(safe-area-inset-top)] text-white shadow-md">
+                <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 sm:h-16">
+                    <button type="button" onClick={() => navigate(who ? "miss" : "login")} className="flex min-w-0 items-center gap-2.5">
+                        <img alt="" src={logoLight} className="h-9 w-auto"/>
+                        <span className="min-w-0 text-left leading-tight">
+                            <span className="block truncate font-display text-base font-bold text-gold-300 sm:text-lg">Qui c'est qui sera Miss France ?</span>
+                            {edition && <span className="block text-[11px] uppercase tracking-widest text-white/60">Édition {edition}</span>}
+                        </span>
                     </button>
-                </div>
-                <div className="hidden lg:flex lg:gap-x-12">
-                        <a onClick={() => setPage("home")} className="cursor-pointer text-sm/6 font-semibold text-gray-900">
-                            Les Miss
-                        </a>
-                        <a onClick={() => setPage("my-vote")} className="cursor-pointer text-sm/6 font-semibold text-gray-900">
-                            Mes votes
-                        </a>
-                        <a onClick={() => setPage("rank")} className="cursor-pointer text-sm/6 font-semibold text-gray-900">
-                            Le classement
-                        </a>
-                        <a onClick={() => setPage("admin")} className="cursor-pointer text-sm/6 font-semibold text-gray-400">
-                            Admin
-                        </a>
-                </div>
-                <div className="hidden lg:flex lg:flex-col lg:flex-1 lg:items-end">
 
-                </div>
-            </nav>
-            <Dialog open={mobileMenuOpen} onClose={setMobileMenuOpen} className="lg:hidden">
-                <div className="fixed inset-0 z-50"/>
-                <DialogPanel
-                    className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto bg-white px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-gray-900/10">
-                    <div className="flex items-center justify-between">
-                        <a href="#" className="-m-1.5 p-1.5">
-                            <img
-                                alt=""
-                                src={logoLight}
-                                className="h-8 w-auto"
-                            />
-                        </a>
-                        <button
-                            type="button"
-                            onClick={() => setMobileMenuOpen(false)}
-                            className="-m-2.5 rounded-md p-2.5 text-gray-700"
-                        >
-                            <span className="sr-only">Fermer menu</span>
-                            <XMarkIcon aria-hidden="true" className="size-6"/>
-                        </button>
-                    </div>
-                    <div className="mt-6 flow-root">
-                        <div className="-my-6 divide-y divide-gray-500/10">
-                            <div className="space-y-2 py-6">
-                                <a onClick={() => {setMobileMenuOpen(false);setPage("home")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
-                                    Les Miss
-                                </a>
-                                <a onClick={() => {setMobileMenuOpen(false);setPage("my-vote")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
-                                    Mes votes
-                                </a>
-                                <a onClick={() => {setMobileMenuOpen(false);setPage("rank")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
-                                    Le classement
-                                </a>
-                                <a onClick={() => {setMobileMenuOpen(false);setPage("admin")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-400 hover:bg-gray-50">
-                                    Admin
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </DialogPanel>
-            </Dialog>
-        </header>
+                    <nav aria-label="Navigation principale" className="ml-auto hidden items-center gap-1 sm:flex">
+                        {TABS.map((tab) => (
+                            <a key={tab.page} href={`#/${tab.page}`} aria-current={page === tab.page ? "page" : undefined}
+                               className={"rounded-full px-4 py-2 text-sm font-semibold transition " + (page === tab.page ? "bg-white/15 text-gold-300" : "text-white/80 hover:bg-white/10")}>
+                                {tab.label}
+                            </a>
+                        ))}
+                    </nav>
 
-        <div className="relative isolate px-6 pt-14 lg:px-8">
-            <div
-                aria-hidden="true"
-                className="absolute inset-x-0 -top-40 -z-10 transform-gpu overflow-hidden blur-3xl sm:-top-80"
-            >
-                <div
-                    style={{
-                        clipPath:
-                            'polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)',
-                    }}
-                    className="relative left-[calc(50%-11rem)] aspect-[1155/678] w-[36.125rem] -translate-x-1/2 rotate-[30deg] bg-gradient-to-tr from-[#ff80b5] to-[#9089fc] opacity-30 sm:left-[calc(50%-30rem)] sm:w-[72.1875rem]"
-                />
-            </div>
-            <div className="mx-auto max-w-2xl py-4 sm:py-6 lg:py-8">
-
-                <div className="text-center">
-                    <div className="flex justify-center">
-                        <img
-                            alt=""
-                            src={logo}
-                            className="h-40 w-auto"
-                        />
+                    <div className="ml-auto sm:ml-2">
+                        {who
+                            ? <Menu as="div" className="relative">
+                                <MenuButton className="flex items-center gap-2 rounded-full p-1 pr-1 hover:bg-white/10 sm:pr-3">
+                                    <Avatar name={who.name}/>
+                                    <span className="hidden max-w-32 truncate text-sm font-semibold sm:block">{who.name}</span>
+                                    <span className="sr-only">Menu du compte</span>
+                                </MenuButton>
+                                <MenuItems transition anchor="bottom end"
+                                           className="z-40 mt-2 w-52 rounded-2xl bg-white p-1.5 text-ink shadow-xl ring-1 ring-black/5 transition duration-100 data-[closed]:scale-95 data-[closed]:opacity-0">
+                                    <div className="px-3 py-2 text-xs text-ink/50">Connecté : <span className="font-semibold text-ink">{who.name}</span></div>
+                                    <MenuItem>
+                                        <a href="#/admin" className="block rounded-xl px-3 py-2.5 text-sm data-[focus]:bg-wine-50">Administration</a>
+                                    </MenuItem>
+                                    <MenuItem>
+                                        <button type="button" onClick={() => logout(token)} className="block w-full rounded-xl px-3 py-2.5 text-left text-sm data-[focus]:bg-wine-50">Se déconnecter</button>
+                                    </MenuItem>
+                                </MenuItems>
+                            </Menu>
+                            : page !== "login" && <button type="button" onClick={() => navigate("login")} className="btn-gold !min-h-9 !px-4">Se connecter</button>}
                     </div>
                 </div>
-            </div>
+            </header>
 
-            <SelectWho show={page === ""} signIn={signIn} register={register}></SelectWho>
-            <Home show={page === "home"} misses={misses}></Home>
-            {who
-                ? <Vote show={page === "my-vote"} phase={phase} misses={misses} votes={votes} saveVote={saveVote}></Vote>
-                : page === "my-vote" && <p className="p-6 text-center">
-                    <button type="button" onClick={() => setPage("")} className="underline">Connectez-vous pour voter</button>
+            {!online && <p role="status" className="bg-gold-300 px-4 py-2 text-center text-sm font-semibold text-wine-950">
+                Hors connexion : les votes et le classement reprendront au retour du réseau.
+            </p>}
+
+            <main className={"mx-auto w-full max-w-5xl flex-1 px-4 pt-5 sm:pt-8 " + (showChrome ? "pb-28 sm:pb-12" : "pb-10")}>
+                {showChrome && page !== "admin" && page !== "votes" && edition && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-wine-800 to-wine-950 px-4 py-3 text-white shadow-sm">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-widest text-gold-300">
+                            {current ? `Phase ${current.number} sur ${PHASES.length} · votes ouverts` : "Élection terminée"}
+                        </p>
+                        <p className="text-sm text-white/90">
+                            {current
+                                ? token ? `${picksDone} choix sur ${current.slots.length} enregistrés. ${current.intro}` : current.intro
+                                : "Découvrez le classement final."}
+                        </p>
+                    </div>
+                    {phase >= FINISHED_PHASE
+                        ? page !== "rank" && <button type="button" onClick={() => navigate("rank")} className="btn-gold !min-h-9 !px-4">Classement</button>
+                        : <button type="button" onClick={() => navigate(token ? "votes" : "login")} className="btn-gold !min-h-9 !px-4">
+                            {!token ? "Participer" : votesPending ? "Faire mes choix" : "Modifier mes choix"}
+                        </button>}
+                </div>}
+
+                {page === "login" && <Login signIn={signIn} register={register} browse={() => navigate("miss")}/>}
+                {page === "miss" && <Home misses={misses} loading={!missesLoaded} pickStateOf={pickStateOf} onPick={quickPick}
+                                           goVotes={() => navigate("votes")} goLogin={() => navigate("login")}/>}
+                {page === "votes" && <Vote phase={phase} misses={misses} votes={votes} loggedIn={!!token} vote={vote}
+                                           goLogin={() => navigate("login")} goRank={() => navigate("rank")}/>}
+                {page === "rank" && <Rank phase={phase} edition={edition} editions={editions} who={who} misses={allMisses}/>}
+                {page === "admin" && <Admin phase={phase} edition={edition} misses={misses} users={users}
+                                            reloadGame={loadGame} reloadMisses={loadMisses} reloadPlayers={loadPlayers}/>}
+
+                {showChrome && page !== "admin" && !who && <p className="mt-10 text-center text-xs text-ink/40">
+                    <a href="#/admin" className="underline underline-offset-4">Administration</a>
                 </p>}
-            <Rank show={page === "rank"} phase={phase} edition={edition} editions={editions} who={who} misses={allMisses}></Rank>
-            <Admin show={page === "admin"} phase={phase} edition={edition} misses={misses} users={users}
-                   reloadGame={loadGame} reloadMisses={loadMisses} reloadPlayers={loadPlayers}></Admin>
+            </main>
 
+            {showChrome && <nav aria-label="Navigation principale"
+                                className="fixed inset-x-0 bottom-0 z-30 border-t border-wine-100 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+                <ul className="mx-auto grid max-w-md grid-cols-3">
+                    {TABS.map((tab) => {
+                        const active = page === tab.page;
+                        const Icon = active ? tab.activeIcon : tab.icon;
+                        return (
+                            <li key={tab.page}>
+                                <a href={`#/${tab.page}`} aria-current={active ? "page" : undefined}
+                                   className={"relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold " + (active ? "text-wine-600" : "text-ink/50")}>
+                                    <span className="relative">
+                                        <Icon className="size-6"/>
+                                        {tab.page === "votes" && votesPending && <span className="absolute -right-1 -top-0.5 size-2.5 rounded-full bg-gold-500 ring-2 ring-white">
+                                            <span className="sr-only">Choix à compléter</span>
+                                        </span>}
+                                    </span>
+                                    {tab.label}
+                                </a>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </nav>}
 
+            <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60] flex justify-center px-4 sm:bottom-6">
+                {toast && <p key={toast.id}
+                             className={"pointer-events-auto flex max-w-sm items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold shadow-lg "
+                                 + (toast.ok ? "bg-wine-900 text-white" : "bg-red-600 text-white")}>
+                    {toast.ok ? <CheckCircleIcon className="size-5 shrink-0 text-gold-300"/> : <ExclamationCircleIcon className="size-5 shrink-0"/>}
+                    {toast.text}
+                </p>}
+            </div>
         </div>
-    </div>
-  )
+    )
 }
 
 export default App

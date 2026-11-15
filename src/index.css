@@ -2,3 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+    html {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        @apply bg-ivory text-ink antialiased;
+        overscroll-behavior-y: none;
+    }
+
+    /* Chiffres alignés : les chiffres elzéviriens de la police de titre se lisent mal ("1ère"). */
+    .font-display {
+        font-variant-numeric: lining-nums;
+    }
+
+    :focus-visible {
+        outline: 2px solid theme('colors.gold.500');
+        outline-offset: 2px;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold transition disabled:opacity-50;
+    }
+
+    .btn-primary {
+        @apply btn bg-wine-600 text-white shadow-sm hover:bg-wine-700 active:bg-wine-800;
+    }
+
+    .btn-gold {
+        @apply btn bg-gradient-to-r from-gold-300 to-gold-500 text-wine-950 shadow-sm hover:brightness-105 active:brightness-95;
+    }
+
+    .btn-ghost {
+        @apply btn bg-white text-wine-700 ring-1 ring-wine-200 hover:bg-wine-50 active:bg-wine-100;
+    }
+
+    .card {
+        @apply rounded-2xl bg-white shadow-sm ring-1 ring-black/5;
+    }
+
+    .field {
+        @apply block min-h-11 w-full rounded-xl border-0 bg-white px-4 text-base text-ink ring-1 ring-wine-200 placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-gold-500;
+    }
+
+    .page-title {
+        @apply font-display text-2xl font-bold text-wine-900 sm:text-3xl;
+        font-variant-numeric: lining-nums;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+}

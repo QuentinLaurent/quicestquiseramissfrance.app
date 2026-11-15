@@ -1,9 +1,9 @@
 import {useEffect, useMemo, useState} from "react";
+import {Avatar, EmptyState} from "../components/ui.tsx";
 import {Miss, PHASES, RankingRow} from "../lib/game.ts";
 import {supabase} from "../lib/supabase.ts";
 
 interface Props {
-    show: boolean;
     phase: number;
     edition: string;
     editions: string[];
@@ -12,9 +12,15 @@ interface Props {
     misses: Miss[];
 }
 
-const Rank = ({show, phase, edition, editions, who, misses}: Props) => {
+const MEDALS = [
+    "bg-gradient-to-br from-gold-300 to-gold-500 text-wine-950",
+    "bg-gradient-to-br from-zinc-200 to-zinc-400 text-zinc-900",
+    "bg-gradient-to-br from-amber-600 to-amber-800 text-white",
+];
+
+const Rank = ({phase, edition, editions, who, misses}: Props) => {
     const [selectedEdition, setSelectedEdition] = useState(edition);
-    const [rows, setRows] = useState<RankingRow[]>([]);
+    const [rows, setRows] = useState<RankingRow[] | null>(null);
 
     useEffect(() => {
         setSelectedEdition(edition)
@@ -33,7 +39,7 @@ const Rank = ({show, phase, edition, editions, who, misses}: Props) => {
     }, [selectedEdition, phase, misses]);
 
     const ranking = useMemo(() => {
-        const sorted = [...rows].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "fr"));
+        const sorted = [...(rows ?? [])].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "fr"));
         const ranks: number[] = [];
         sorted.forEach((row, i) => ranks.push(i > 0 && sorted[i - 1].total === row.total ? ranks[i - 1] : i + 1));
         return sorted.map((row, i) => ({...row, rank: ranks[i]}));
@@ -41,40 +47,57 @@ const Rank = ({show, phase, edition, editions, who, misses}: Props) => {
 
     const closedPhases = PHASES.filter((p) => selectedEdition !== edition || p.number < phase);
     const pointsOf = (row: RankingRow, number: number) => [row.p1, row.p2, row.p3, row.p4][number - 1];
+    const scored = closedPhases.length > 0;
 
     return (
-        <div className={!show ? 'hidden' : ''}>
-            <p className="text-center uppercase mt-4 text-pretty text-lg font-medium text-gray-900 sm:text-xl/8">
-                Classement !
-            </p>
-            {editions.length > 1 && <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <section>
+            <h1 className="page-title">Classement</h1>
+            <p className="text-sm text-ink/60">Miss France {selectedEdition}</p>
+
+            {editions.length > 1 && <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Édition">
                 {editions.map((e) => (
-                    <button key={e} onClick={() => setSelectedEdition(e)}
-                            className={"rounded px-3 py-1 text-sm font-bold " + (e === selectedEdition ? "bg-[#9c272e] text-white" : "bg-gray-200")}>
-                        Miss France {e}
+                    <button key={e} type="button" role="tab" aria-selected={e === selectedEdition} onClick={() => setSelectedEdition(e)}
+                            className={"min-h-9 rounded-full px-4 text-sm font-semibold " + (e === selectedEdition ? "bg-wine-600 text-white" : "bg-white text-wine-700 ring-1 ring-wine-200")}>
+                        {e}
                     </button>
                 ))}
             </div>}
-            {closedPhases.length === 0 && <p className="mt-4 text-center text-sm text-gray-600">
-                Les points arrivent à la clôture de la 1ère phase.
+
+            {!scored && <p className="mt-4 rounded-2xl bg-gold-100 px-4 py-3 text-sm text-wine-900">
+                Les points arrivent à la clôture de la 1ère phase de vote.
             </p>}
-            <ol className="m-auto max-w-[500px] my-10">
-                {ranking.map((line) => (
-                    <li key={line.player_id}
-                        className={"flex items-center gap-3 border-b border-b-gray-500 p-2 " + (line.player_id === who?.id ? "bg-rose-50" : "")}>
-                        <span className="w-8 text-right font-bold tabular-nums text-[#9c272e]">{line.rank}.</span>
-                        <span className="flex-1">
-                            <span className="block font-bold">{line.name}</span>
-                            {closedPhases.length > 0 && <span className="block text-xs text-gray-500">
-                                {closedPhases.map((p) => `Phase ${p.number} : ${pointsOf(line, p.number)}`).join(" · ")}
-                                {line.tierce && " · tiercé dans l'ordre"}
-                            </span>}
-                        </span>
-                        <span className="font-bold tabular-nums">{line.total} {line.total > 1 ? "points" : "point"}</span>
-                    </li>
-                ))}
+
+            {rows !== null && ranking.length === 0 && <div className="mt-6">
+                <EmptyState title="Personne n'est encore inscrit">Le classement se remplira avec les premiers joueurs.</EmptyState>
+            </div>}
+
+            <ol className="mt-5 space-y-2">
+                {ranking.map((line) => {
+                    const me = line.player_id === who?.id;
+                    return (
+                        <li key={line.player_id}
+                            className={"flex items-center gap-3 rounded-2xl px-3 py-3 sm:px-4 " + (me ? "bg-wine-900 text-white shadow-md" : "card")}>
+                            <span className={"inline-flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums "
+                                + (scored && line.rank <= 3 && line.total > 0 ? MEDALS[line.rank - 1] : me ? "bg-white/15 text-white" : "bg-wine-50 text-wine-700")}>
+                                {line.rank}
+                            </span>
+                            <Avatar name={line.name} className="hidden sm:inline-flex"/>
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate font-semibold">{line.name}{me && <span className="ml-2 text-xs font-normal text-gold-300">vous</span>}</span>
+                                {scored && <span className={"block truncate text-xs " + (me ? "text-white/70" : "text-ink/50")}>
+                                    {closedPhases.map((p) => `P${p.number} : ${pointsOf(line, p.number)}`).join(" · ")}
+                                    {line.tierce && " · tiercé dans l'ordre"}
+                                </span>}
+                            </span>
+                            <span className="text-right">
+                                <span className="block font-display text-xl font-bold tabular-nums leading-none">{line.total}</span>
+                                <span className={"text-[11px] " + (me ? "text-white/70" : "text-ink/50")}>{line.total > 1 ? "points" : "point"}</span>
+                            </span>
+                        </li>
+                    );
+                })}
             </ol>
-        </div>
+        </section>
     );
 }
 

@@ -1,10 +1,33 @@
 import {useMemo, useState} from "react";
+import {HeartIcon, MagnifyingGlassIcon} from "@heroicons/react/20/solid";
+import Sheet from "../components/Sheet.tsx";
+import {EmptyState, MissPhoto, ResultBadge} from "../components/ui.tsx";
 import {Miss} from "../lib/game.ts";
 
-const Home = ({misses, show}: { misses: Miss[], show: boolean }) => {
-    const [search, setSearch] = useState("");
+// Ce que le joueur peut faire d'une miss depuis sa fiche, pour la phase en cours.
+export type PickState =
+    | { kind: "picked", slot: string }
+    | { kind: "available" }
+    | { kind: "full" }
+    | { kind: "eliminated" }
+    | { kind: "closed" }
+    | { kind: "anonymous" };
 
-    const miss = useMemo(() => {
+interface Props {
+    misses: Miss[];
+    loading: boolean;
+    pickStateOf: (miss: Miss) => PickState;
+    onPick: (miss: Miss) => Promise<boolean>;
+    goVotes: () => void;
+    goLogin: () => void;
+}
+
+const Home = ({misses, loading, pickStateOf, onPick, goVotes, goLogin}: Props) => {
+    const [search, setSearch] = useState("");
+    const [openId, setOpenId] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    const shown = useMemo(() => {
         const term = search.trim().toLowerCase();
         if (!term) return misses;
         return misses.filter((m) =>
@@ -12,53 +35,96 @@ const Home = ({misses, show}: { misses: Miss[], show: boolean }) => {
         );
     }, [misses, search]);
 
+    const opened = misses.find((m) => m.id === openId);
+    const openedState = opened ? pickStateOf(opened) : null;
+
+    const pick = async (miss: Miss) => {
+        setBusy(true);
+        await onPick(miss);
+        setBusy(false);
+    }
+
     return (
-        <div className={!show ? 'hidden' : ''}>
-            <p className="text-center uppercase mt-4 text-pretty text-lg font-medium text-gray-900 sm:text-xl/8">
-                Liste des Miss
-            </p>
-
-            <div>
-                <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-12 lg:max-w-7xl lg:px-8">
-
-                    <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:gap-x-8">
-                        {miss.map((m) => (
-                            <a key={m.id} className=" relative mb-5">
-                                <h2 className="absolute shadow rounded text-center text-2xl -top-5 right-4 left-4  z-10 bg-[#9c272e] text-white py-1 px-3 uppercase">Miss {m.region}{m.field && <small><br />{m.field}</small>}</h2>
-                                {m.photoUrl
-                                    ? <img
-                                        alt={m.name}
-                                        src={m.photoUrl}
-                                        loading="lazy"
-                                        className="aspect-[3/4] w-full overflow-hidden rounded-lg object-cover object-top"
-                                    />
-                                    : <div className="aspect-[3/4] w-full rounded-lg bg-gray-100"/>}
-                                <div
-                                    className="mt-4 flex items-center justify-between text-base font-medium text-gray-900">
-                                    <h3>{m.name}</h3>
-                                    <p>{m.age} ans</p>
-                                </div>
-                                <p className="mt-1 text-sm italic text-gray-500">{m.work}</p>
-                            </a>
-                        ))}
-                    </div>
+        <section>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h1 className="page-title">Les candidates</h1>
+                    <p className="text-sm text-ink/60">{misses.length} miss régionales en lice</p>
                 </div>
+                <label className="relative block w-full sm:w-72">
+                    <span className="sr-only">Filtrer les miss</span>
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-wine-700/50"/>
+                    <input type="search" placeholder="Région, nom, âge…" value={search}
+                           onChange={(e) => setSearch(e.currentTarget.value)} className="field pl-10"/>
+                </label>
             </div>
-            <div className="fixed z-20 left-1/2 bottom-0 pb-6 -translate-x-1/2 bg-gray-100 shadow-xl rounded-t px-2 py-1 flex items-center">
-                <input type="text" id="filterMiss" placeholder="filtrer par mot clé" className="bg-transparent outline-0"
-                       value={search}
-                    onInput={(e) => setSearch(e.currentTarget.value)}
-                />
-                {search !== "" && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5}
-                     stroke="currentColor" className="size-6 cursor-pointer"
-                     onClick={() => {setSearch("")}}
-                >
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                          d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-                </svg>}
 
-            </div>
-        </div>
+            {loading && <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4" aria-hidden="true">
+                {Array.from({length: 8}, (_, i) => <li key={i} className="aspect-[3/4] animate-pulse rounded-2xl bg-wine-100"/>)}
+            </ul>}
+
+            {!loading && shown.length === 0 && <div className="mt-8">
+                <EmptyState title={misses.length ? "Aucune miss ne correspond" : "Les candidates arrivent bientôt"}>
+                    {misses.length ? "Essayez un autre mot-clé." : "La liste sera publiée avant l'émission."}
+                </EmptyState>
+            </div>}
+
+            <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+                {shown.map((m) => {
+                    const state = pickStateOf(m);
+                    return (
+                        <li key={m.id}>
+                            <button type="button" onClick={() => setOpenId(m.id)}
+                                    className="group relative block w-full overflow-hidden rounded-2xl bg-wine-100 text-left shadow-sm ring-1 ring-black/5 transition active:scale-[0.98]">
+                                <MissPhoto miss={m} className="aspect-[3/4] w-full transition duration-300 group-hover:scale-105"/>
+                                <span className="absolute inset-x-0 bottom-0 block bg-gradient-to-t from-wine-950/95 via-wine-950/60 to-transparent px-3 pb-3 pt-12 text-white">
+                                    <span className="block font-display text-base font-bold leading-tight sm:text-lg">Miss {m.region}</span>
+                                    <span className="block truncate text-xs text-white/80">{m.name}{m.age ? `, ${m.age} ans` : ""}</span>
+                                </span>
+                                {m.field && <ResultBadge result={m.field} className="absolute left-2 top-2"/>}
+                                {state.kind === "picked" && <span title="Dans vos choix"
+                                    className="absolute right-2 top-2 inline-flex size-7 items-center justify-center rounded-full bg-white text-wine-600 shadow">
+                                    <HeartIcon className="size-4"/>
+                                    <span className="sr-only">Dans vos choix</span>
+                                </span>}
+                            </button>
+                        </li>
+                    );
+                })}
+            </ul>
+
+            <Sheet open={!!opened} onClose={() => setOpenId(null)}
+                   title={opened ? `Miss ${opened.region}` : ""}
+                   subtitle={opened ? `${opened.name}${opened.age ? `, ${opened.age} ans` : ""}` : undefined}>
+                {opened && openedState && <div className="grid gap-5 sm:grid-cols-2">
+                    <MissPhoto miss={opened} className="aspect-[3/4] w-full rounded-2xl"/>
+                    <div className="flex flex-col gap-4">
+                        {opened.field && <div><ResultBadge result={opened.field}/></div>}
+                        {opened.work && <p className="text-ink/80">{opened.work}</p>}
+                        <div className="mt-auto flex flex-col gap-2">
+                            {openedState.kind === "picked" && <p className="rounded-xl bg-wine-50 px-4 py-3 text-sm text-wine-800">
+                                Dans vos choix de la phase en cours ({openedState.slot}).
+                            </p>}
+                            {openedState.kind === "available" && <button type="button" disabled={busy} onClick={() => pick(opened)} className="btn-primary">
+                                <HeartIcon className="size-5"/> Ajouter à mes choix
+                            </button>}
+                            {openedState.kind === "full" && <p className="rounded-xl bg-wine-50 px-4 py-3 text-sm text-wine-800">
+                                Vos choix de la phase sont complets. Remplacez une miss depuis « Mes votes ».
+                            </p>}
+                            {openedState.kind === "eliminated" && <p className="rounded-xl bg-wine-50 px-4 py-3 text-sm text-wine-800">
+                                Cette miss n'est plus en course pour la phase en cours.
+                            </p>}
+                            {openedState.kind === "anonymous" && <button type="button" onClick={goLogin} className="btn-primary">
+                                Se connecter pour voter
+                            </button>}
+                            {(openedState.kind === "picked" || openedState.kind === "full") && <button type="button" onClick={goVotes} className="btn-ghost">
+                                Voir mes votes
+                            </button>}
+                        </div>
+                    </div>
+                </div>}
+            </Sheet>
+        </section>
     );
 }
 
