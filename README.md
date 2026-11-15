@@ -32,7 +32,9 @@ en cours et l'unicité des choix.
 
 ## Administrer une édition
 
-Tout se fait dans le Table Editor de Supabase.
+Tout se fait depuis le lien « Admin » du site, avec un compte Supabase Auth du projet
+inscrit dans la table `mf_admins` (à ajouter à la main dans le tableau de bord Supabase).
+Le Table Editor de Supabase reste utilisable en secours.
 
 **Avant l'émission**
 

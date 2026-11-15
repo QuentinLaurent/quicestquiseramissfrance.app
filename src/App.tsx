@@ -8,6 +8,7 @@ import {XMarkIcon} from "@heroicons/react/16/solid";
 import Home from "./pages/Home.tsx";
 import Vote from "./pages/Vote.tsx";
 import Rank from "./pages/Rank.tsx";
+import Admin from "./pages/Admin.tsx";
 import SelectWho from "./pages/SelectWho.tsx";
 import {Miss, Player, VoteRecord} from "./lib/game.ts";
 import {photoUrl, supabase} from "./lib/supabase.ts";
@@ -187,6 +188,9 @@ function App() {
                         <a onClick={() => setPage("rank")} className="cursor-pointer text-sm/6 font-semibold text-gray-900">
                             Le classement
                         </a>
+                        <a onClick={() => setPage("admin")} className="cursor-pointer text-sm/6 font-semibold text-gray-400">
+                            Admin
+                        </a>
                 </div>
                 <div className="hidden lg:flex lg:flex-col lg:flex-1 lg:items-end">
 
@@ -224,6 +228,9 @@ function App() {
                                 </a>
                                 <a onClick={() => {setMobileMenuOpen(false);setPage("rank")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-900 hover:bg-gray-50">
                                     Le classement
+                                </a>
+                                <a onClick={() => {setMobileMenuOpen(false);setPage("admin")}} className="cursor-pointer -mx-3 block rounded-lg px-3 py-2 text-base/7 font-semibold text-gray-400 hover:bg-gray-50">
+                                    Admin
                                 </a>
                             </div>
                         </div>
@@ -266,6 +273,8 @@ function App() {
                     <button type="button" onClick={() => setPage("")} className="underline">Choisissez d'abord qui vous êtes</button>
                 </p>}
             <Rank show={page === "rank"} phase={phase} edition={edition} editions={editions} who={who} misses={allMisses}></Rank>
+            <Admin show={page === "admin"} phase={phase} edition={edition} misses={misses} users={users}
+                   reloadGame={loadGame} reloadMisses={loadMisses} reloadPlayers={loadPlayers}></Admin>
 
 
         </div>

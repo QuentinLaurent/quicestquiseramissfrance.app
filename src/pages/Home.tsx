@@ -29,6 +29,7 @@ const Home = ({misses, show}: { misses: Miss[], show: boolean }) => {
                                     ? <img
                                         alt={m.name}
                                         src={m.photoUrl}
+                                        loading="lazy"
                                         className="aspect-[3/4] w-full overflow-hidden rounded-lg object-cover object-top"
                                     />
                                     : <div className="aspect-[3/4] w-full rounded-lg bg-gray-100"/>}

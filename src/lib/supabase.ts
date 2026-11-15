@@ -5,7 +5,8 @@ import {createClient} from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL || "https://fdxrqvxpdoemdjrrysvc.supabase.co";
 const key = import.meta.env.VITE_SUPABASE_KEY || "sb_publishable_JfGHdRYxJhXOyLdiEu0zIA_k4oUSyBj";
 
-export const supabase = createClient(url, key, {auth: {persistSession: false}});
+// La session Supabase ne sert qu'à l'administration ; les joueurs s'identifient par leur code.
+export const supabase = createClient(url, key, {auth: {storageKey: "qcqsmf.admin", detectSessionInUrl: false}});
 
 export const photoUrl = (photo?: string | null) => {
     if (!photo) return undefined;

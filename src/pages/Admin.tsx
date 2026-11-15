@@ -1,0 +1,320 @@
+import {FormEvent, useEffect, useState} from "react";
+import {FINISHED_PHASE, levelOf, LEVEL, Miss, PHASES, Player} from "../lib/game.ts";
+import {supabase} from "../lib/supabase.ts";
+
+interface Props {
+    show: boolean;
+    phase: number;
+    edition: string;
+    misses: Miss[];
+    users: Player[];
+    reloadGame: () => Promise<void>;
+    reloadMisses: () => Promise<void>;
+    reloadPlayers: () => Promise<void>;
+}
+
+const RESULTS = ["Top 15", "Top 5", "2ème Dauphine", "1ère Dauphine", "Miss France"];
+
+interface MissForm {
+    id?: string;
+    region: string;
+    name: string;
+    age: string;
+    work: string;
+    photo: string;
+}
+
+const EMPTY_MISS: MissForm = {region: "", name: "", age: "", work: "", photo: ""};
+
+const button = "rounded bg-gray-200 px-3 py-1 text-sm font-bold hover:bg-gray-300 disabled:opacity-50";
+const primary = "rounded bg-[#9c272e] px-3 py-1 text-sm font-bold text-white disabled:opacity-50";
+const input = "rounded border border-gray-300 px-2 py-1 text-sm";
+
+const Admin = ({show, phase, edition, misses, users, reloadGame, reloadMisses, reloadPlayers}: Props) => {
+    const [userId, setUserId] = useState<string | null | undefined>(undefined);
+    const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [status, setStatus] = useState<{ ok: boolean, text: string } | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [newEdition, setNewEdition] = useState("");
+    const [missForm, setMissForm] = useState<MissForm | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [newPlayer, setNewPlayer] = useState("");
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({data}) => setUserId(data.session?.user.id ?? null));
+        const {data} = supabase.auth.onAuthStateChange((_event, session) => setUserId(session?.user.id ?? null));
+        return () => data.subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        if (!userId) {
+            setIsAdmin(null);
+            return;
+        }
+        let cancelled = false;
+        supabase.rpc('mf_is_admin').then(({data}) => {
+            if (!cancelled) setIsAdmin(data === true);
+        });
+        return () => {
+            cancelled = true;
+        }
+    }, [userId]);
+
+    // Exécute une action d'administration et affiche son résultat.
+    const run = async (label: string, action: () => Promise<{ error: { message: string } | null }>) => {
+        setBusy(true);
+        try {
+            const {error} = await action();
+            if (error) setStatus({ok: false, text: `${label} : échec (${error.message})`});
+            else setStatus({ok: true, text: `${label} : fait`});
+            return !error;
+        } catch (error) {
+            setStatus({ok: false, text: `${label} : échec (${error instanceof Error ? error.message : "erreur"})`});
+            return false;
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    const login = async (event: FormEvent) => {
+        event.preventDefault();
+        setBusy(true);
+        const {error} = await supabase.auth.signInWithPassword({email: email.trim(), password});
+        setBusy(false);
+        setPassword("");
+        setStatus(error ? {ok: false, text: "Connexion refusée : e-mail ou mot de passe incorrect."} : null);
+    }
+
+    const logout = async () => {
+        await supabase.auth.signOut();
+        setStatus(null);
+    }
+
+    const setPhase = async (next: number) => {
+        if (next === phase) return;
+        const label = next >= FINISHED_PHASE ? "Clôturer les votes" : `Ouvrir la phase ${next}`;
+        if (!window.confirm(`${label} ? Les joueurs le verront immédiatement.`)) return;
+        await run(label, async () => supabase.from('mf_game').update({phase: next}).eq('id', true));
+        await reloadGame();
+    }
+
+    const changeEdition = async (event: FormEvent) => {
+        event.preventDefault();
+        const next = newEdition.trim();
+        if (!next || next === edition) return;
+        if (!window.confirm(`Passer à l'édition ${next} ? La phase revient à 1 et la liste des miss repart de celles de cette édition.`)) return;
+        if (await run(`Édition ${next}`, async () => supabase.from('mf_game').update({edition: next, phase: 1}).eq('id', true))) {
+            setNewEdition("");
+        }
+        await reloadGame();
+    }
+
+    const setResult = async (miss: Miss, result: string) => {
+        await run(`Miss ${miss.region}`, async () => supabase.from('mf_misses').update({result: result || null}).eq('id', miss.id));
+        await reloadMisses();
+    }
+
+    const saveMiss = async (event: FormEvent) => {
+        event.preventDefault();
+        if (!missForm) return;
+        const region = missForm.region.trim();
+        const ok = await run(`Miss ${region}`, async () => {
+            let photo = missForm.photo.trim() || null;
+            if (photoFile) {
+                const extension = (photoFile.name.split('.').pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const path = `${edition}/${crypto.randomUUID()}.${extension}`;
+                const upload = await supabase.storage.from('miss-photos').upload(path, photoFile, {contentType: photoFile.type});
+                if (upload.error) return {error: upload.error};
+                photo = path;
+            }
+            const values = {
+                region,
+                name: missForm.name.trim(),
+                age: missForm.age.trim() ? parseInt(missForm.age) : null,
+                work: missForm.work.trim(),
+                photo,
+            };
+            return missForm.id
+                ? supabase.from('mf_misses').update(values).eq('id', missForm.id)
+                : supabase.from('mf_misses').insert({...values, edition});
+        });
+        if (ok) {
+            setMissForm(null);
+            setPhotoFile(null);
+        }
+        await reloadMisses();
+    }
+
+    const editMiss = async (miss: Miss) => {
+        // La colonne photo brute (nom de fichier ou URL) n'est pas dans la liste affichée.
+        const {data} = await supabase.from('mf_misses').select('photo').eq('id', miss.id).single();
+        setPhotoFile(null);
+        setMissForm({
+            id: miss.id,
+            region: miss.region,
+            name: miss.name,
+            age: miss.age === null ? "" : String(miss.age),
+            work: miss.work,
+            photo: data?.photo ?? "",
+        });
+    }
+
+    const deleteMiss = async (miss: Miss) => {
+        if (!window.confirm(`Supprimer Miss ${miss.region} ? Les votes qui la concernent seront supprimés aussi.`)) return;
+        await run(`Suppression de Miss ${miss.region}`, async () => supabase.from('mf_misses').delete().eq('id', miss.id));
+        await reloadMisses();
+    }
+
+    const addPlayer = async (event: FormEvent) => {
+        event.preventDefault();
+        const name = newPlayer.trim();
+        if (!name) return;
+        if (await run(`Ajout de ${name}`, async () => supabase.from('mf_players').insert({name}))) setNewPlayer("");
+        await reloadPlayers();
+    }
+
+    const resetCode = async (player: Player) => {
+        if (!window.confirm(`Réinitialiser le code de ${player.name} ? Il en choisira un nouveau à sa prochaine connexion.`)) return;
+        await run(`Code de ${player.name}`, async () => supabase.from('mf_players').update({code_hash: null}).eq('id', player.id));
+        await reloadPlayers();
+    }
+
+    const deletePlayer = async (player: Player) => {
+        if (!window.confirm(`Supprimer ${player.name} ? Tous ses votes seront supprimés, toutes éditions confondues.`)) return;
+        await run(`Suppression de ${player.name}`, async () => supabase.from('mf_players').delete().eq('id', player.id));
+        await reloadPlayers();
+    }
+
+    const countAtLeast = (level: number) => misses.filter((m) => levelOf(m) >= level).length;
+
+    return (
+        <div className={(!show ? 'hidden' : '') + " mx-auto mb-40 max-w-3xl"}>
+            <p className="text-center uppercase mt-4 text-pretty text-lg font-medium text-gray-900 sm:text-xl/8">
+                Administration
+            </p>
+
+            {status && <p role="status"
+                          className={"mx-auto mt-4 max-w-md rounded px-3 py-2 text-center text-sm " + (status.ok ? "bg-green-100 text-green-900" : "bg-red-100 text-red-900")}>
+                {status.text}
+            </p>}
+
+            {userId === null && <form onSubmit={login} className="mt-6 flex flex-col items-center gap-3">
+                <input type="email" required autoComplete="username" placeholder="E-mail" aria-label="E-mail"
+                       value={email} onChange={(e) => setEmail(e.currentTarget.value)} className={input + " w-64"}/>
+                <input type="password" required autoComplete="current-password" placeholder="Mot de passe" aria-label="Mot de passe"
+                       value={password} onChange={(e) => setPassword(e.currentTarget.value)} className={input + " w-64"}/>
+                <button type="submit" disabled={busy} className={primary}>Se connecter</button>
+            </form>}
+
+            {userId && isAdmin === false && <div className="mt-6 text-center">
+                <p>Ce compte n'a pas les droits d'administration.</p>
+                <button type="button" onClick={logout} className={button + " mt-3"}>Se déconnecter</button>
+            </div>}
+
+            {userId && isAdmin && <div className="mt-6 space-y-10">
+                <section>
+                    <div className="flex items-center justify-between">
+                        <h2 className="font-bold uppercase">Édition {edition}</h2>
+                        <button type="button" onClick={logout} className={button}>Se déconnecter</button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {[...PHASES.map((p) => ({number: p.number, label: `Phase ${p.number}`})), {number: FINISHED_PHASE, label: "Terminé"}].map((p) => (
+                            <button key={p.number} type="button" disabled={busy} onClick={() => setPhase(p.number)}
+                                    className={p.number === phase ? primary : button}>
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="mt-2 text-sm text-gray-600">
+                        Saisir les qualifiées avant d'ouvrir la phase 3 (Top 15) et la phase 4 (Top 5).
+                        Les points d'une phase apparaissent au classement quand la suivante est ouverte.
+                    </p>
+                    <form onSubmit={changeEdition} className="mt-3 flex flex-wrap items-center gap-2">
+                        <input placeholder="Nouvelle édition (ex. 2028)" aria-label="Nouvelle édition"
+                               value={newEdition} onChange={(e) => setNewEdition(e.currentTarget.value)} className={input}/>
+                        <button type="submit" disabled={busy || !newEdition.trim()} className={button}>Changer d'édition</button>
+                    </form>
+                </section>
+
+                <section>
+                    <div className="flex items-center justify-between">
+                        <h2 className="font-bold uppercase">Miss ({misses.length})</h2>
+                        <button type="button" className={button} onClick={() => {
+                            setPhotoFile(null);
+                            setMissForm(EMPTY_MISS);
+                        }}>Ajouter une miss</button>
+                    </div>
+                    <p className="mt-1 text-sm text-gray-600">
+                        Top 15 : {countAtLeast(LEVEL.TOP15)} · Top 5 : {countAtLeast(LEVEL.TOP5)} ·
+                        Podium : {countAtLeast(LEVEL.SECOND_DAUPHINE)}
+                    </p>
+
+                    {missForm && <form onSubmit={saveMiss} className="mt-3 grid gap-2 rounded bg-gray-100 p-3 sm:grid-cols-2">
+                        <input required placeholder="Région" aria-label="Région" value={missForm.region}
+                               onChange={(e) => setMissForm({...missForm, region: e.currentTarget.value})} className={input}/>
+                        <input placeholder="Nom" aria-label="Nom" value={missForm.name}
+                               onChange={(e) => setMissForm({...missForm, name: e.currentTarget.value})} className={input}/>
+                        <input type="number" min={0} placeholder="Âge" aria-label="Âge" value={missForm.age}
+                               onChange={(e) => setMissForm({...missForm, age: e.currentTarget.value})} className={input}/>
+                        <input placeholder="Profession ou origine" aria-label="Profession ou origine" value={missForm.work}
+                               onChange={(e) => setMissForm({...missForm, work: e.currentTarget.value})} className={input}/>
+                        <input placeholder="Photo : adresse web" aria-label="Photo : adresse web" value={missForm.photo}
+                               onChange={(e) => setMissForm({...missForm, photo: e.currentTarget.value})} className={input}/>
+                        <label className="text-sm">
+                            ou fichier&nbsp;
+                            <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.currentTarget.files?.[0] ?? null)}/>
+                        </label>
+                        <div className="flex gap-2 sm:col-span-2">
+                            <button type="submit" disabled={busy} className={primary}>{missForm.id ? "Enregistrer" : "Ajouter"}</button>
+                            <button type="button" className={button} onClick={() => setMissForm(null)}>Annuler</button>
+                        </div>
+                    </form>}
+
+                    <ul className="mt-3">
+                        {misses.map((m) => (
+                            <li key={m.id} className="flex flex-wrap items-center gap-2 border-b border-gray-300 py-2">
+                                <span className="min-w-40 flex-1">
+                                    <span className="block font-bold">{m.region}</span>
+                                    <span className="block text-xs text-gray-500">{m.name}</span>
+                                </span>
+                                <select aria-label={`Résultat de Miss ${m.region}`} value={m.field} disabled={busy}
+                                        onChange={(e) => setResult(m, e.currentTarget.value)}
+                                        className={input + (m.field ? " bg-rose-50 font-bold" : "")}>
+                                    <option value="">En lice</option>
+                                    {RESULTS.map((r) => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                                <button type="button" className={button} onClick={() => editMiss(m)}>Modifier</button>
+                                <button type="button" className={button} disabled={busy} onClick={() => deleteMiss(m)}>Supprimer</button>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+
+                <section>
+                    <h2 className="font-bold uppercase">Joueurs ({users.length})</h2>
+                    <form onSubmit={addPlayer} className="mt-3 flex flex-wrap items-center gap-2">
+                        <input placeholder="Prénom du joueur" aria-label="Prénom du joueur"
+                               value={newPlayer} onChange={(e) => setNewPlayer(e.currentTarget.value)} className={input}/>
+                        <button type="submit" disabled={busy || !newPlayer.trim()} className={button}>Ajouter</button>
+                    </form>
+                    <ul className="mt-3">
+                        {users.map((u) => (
+                            <li key={u.id} className="flex flex-wrap items-center gap-2 border-b border-gray-300 py-2">
+                                <span className="min-w-40 flex-1">
+                                    <span className="block font-bold">{u.name}</span>
+                                    <span className="block text-xs text-gray-500">{u.has_code ? "Code choisi" : "Pas encore connecté"}</span>
+                                </span>
+                                {u.has_code && <button type="button" className={button} disabled={busy} onClick={() => resetCode(u)}>Réinitialiser le code</button>}
+                                <button type="button" className={button} disabled={busy} onClick={() => deletePlayer(u)}>Supprimer</button>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            </div>}
+        </div>
+    );
+}
+
+export default Admin;
