@@ -138,6 +138,11 @@ function App() {
         if (session) loadVotes(session).catch(console.error);
     }, [session, edition, loadVotes]);
 
+    // La liste des joueurs n'est pas suivie en direct : on la rafraîchit à l'ouverture de l'admin.
+    useEffect(() => {
+        if (page === "admin") loadPlayers().catch(console.error);
+    }, [page, loadPlayers]);
+
     const misses = useMemo(() => allMisses.filter((m) => m.edition === edition), [allMisses, edition]);
     const editions = useMemo(
         () => [...new Set([edition, ...allMisses.map((m) => m.edition)])].filter(Boolean).sort().reverse(),
