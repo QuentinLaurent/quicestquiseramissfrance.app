@@ -21,7 +21,7 @@ const SelectVote = ({misses, setVote, title = "Choix de miss", selectedMiss, tak
                 <ListboxButton
                     className="grid w-full cursor-default grid-cols-1 rounded-md bg-white py-1.5 pl-3 pr-2 text-left text-gray-900 outline outline-1 -outline-offset-1 outline-gray-300 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6">
           <span className="col-start-1 row-start-1 flex items-center gap-3 pr-6">
-            {selectedMiss && <img alt="" src={selectedMiss.photoUrl} className="size-5 shrink-0 rounded-full"/>}
+            {selectedMiss?.photoUrl && <img alt="" src={selectedMiss.photoUrl} className="size-5 shrink-0 rounded-full"/>}
               {selectedMiss && <span className="block truncate">{selectedMiss.region}</span>}
               {!selectedMiss && <span className="block truncate">{title}</span>}
           </span>
@@ -43,8 +43,8 @@ const SelectVote = ({misses, setVote, title = "Choix de miss", selectedMiss, tak
                             className="group relative cursor-default select-none py-2 pl-3 pr-9 text-gray-900 data-[focus]:bg-indigo-600 data-[focus]:text-white data-[focus]:outline-none data-[disabled]:opacity-40"
                         >
                             <div className="flex items-center">
-                                <img alt="" src={miss.photoUrl} className="size-5 shrink-0 rounded-full"/>
-                                <span className="ml-3 block truncate font-normal group-data-[selected]:font-semibold">
+                                {miss.photoUrl && <img alt="" src={miss.photoUrl} className="size-5 shrink-0 rounded-full"/>}
+                                <span className={(miss.photoUrl ? "ml-3 " : "") + "block truncate font-normal group-data-[selected]:font-semibold"}>
                   {miss.region}
                 </span>
                             </div>

@@ -25,11 +25,13 @@ const Home = ({misses, show}: { misses: Miss[], show: boolean }) => {
                         {miss.map((m) => (
                             <a key={m.id} className=" relative mb-5">
                                 <h2 className="absolute shadow rounded text-center text-2xl -top-5 right-4 left-4  z-10 bg-[#9c272e] text-white py-1 px-3 uppercase">Miss {m.region}{m.field && <small><br />{m.field}</small>}</h2>
-                                <img
-                                    alt={m.name}
-                                    src={m.photoUrl}
-                                    className=" w-full overflow-hidden rounded-lg object-cover"
-                                />
+                                {m.photoUrl
+                                    ? <img
+                                        alt={m.name}
+                                        src={m.photoUrl}
+                                        className=" w-full overflow-hidden rounded-lg object-cover"
+                                    />
+                                    : <div className="h-16 rounded-lg bg-gray-100"/>}
                                 <div
                                     className="mt-4 flex items-center justify-between text-base font-medium text-gray-900">
                                     <h3>{m.name}</h3>
